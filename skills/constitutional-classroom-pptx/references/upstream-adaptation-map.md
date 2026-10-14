@@ -4,14 +4,15 @@
 
 | 教学需求 | 复用的上游方法/资源 | 加入的定制与真实产物 | 检查什么 |
 | --- | --- | --- | --- |
-| 大纲和逐字稿变成课堂页序 | `references/strategist.md`、`plan-core.md`；`templates/design_spec_reference.md` | 学生起点、理解变化、口讲/上屏分工进入设计纲，执行约束进入原版设计锁 | 不是逐段压缩成标题；当前材料可回溯 |
+| 总纲、分纲和完整口播变成课堂页序 | `references/strategist.md`、`plan-core.md` §1—4；`templates/design_spec_reference.md` | 按[材料到表达](material-to-expression.md)分层读取；主张、关系、条件、教学推进与屏幕分工进入原版设计纲 | 当前版本与冲突可回溯；不是逐段压缩成标题 |
 | 从总览到细节、建立理解步骤 | `references/modes/_index.md` 及选中的模式，如 `modes/instructional.md` | 用具体跨页对象组织讲解；在 Mode Behavior 写实际采用的叙事行为 | 图中确有总览/局部定位或相关教学结构，不只写模式名 |
 | 成套视觉语言和不同页面构图 | `references/visual-styles/_index.md` 及选中的风格，如 `editorial.md`、`ink-notes.md` | 在 Visual Style Behavior 写采用的字体、层级、线条、留白或注解方法，形成共同语言 | 页面实际体现规则；没有把一种风格误缩成固定暖底色和文字框 |
+| 独立讲次共同身份 | 原版设计纲§III—V、`spec_lock_reference.md`；有有效模板工作区时用`strategist-template.md`的style复用 | 按[课程整体感](course-design-continuity.md)继承课程依据、来源版本和代表页；固定必要角色，开放本讲构图 | 与旧讲实际内容页同看；不把同色或同字段当成整套感，不假造模板工作区 |
 | 图解关系、主体与归属 | `executor-structure.md`、`semantic-svg.md`、`topology-assembly.md` | 法律/学科主体、限制和关系进入可编辑主图 | 位置、方向、边界表达正确含义；设计纲的关系在画面兑现 |
 | 可编辑形状、图标和几何 | `native-shape-authoring.md`、`preset-shape-vocabulary.md`、上游图标库及原生形状工具 | 选用能辨认对象或说明关系的部件；必要时计算或改造几何 | 不限于手写矩形；也不为显示能力堆装饰 |
 | 真实图片与示意配图 | `strategist-image.md`、`executor-image.md`、`executor-web-image.md`；需要生成图时读 `image-generator.md` 及具体 `image-renderings/`、`image-palettes/` | 根据观察任务选择来源、图像语言、裁切和文字区；登记来源及实际文件 | 身份准确、图片确实帮助理解；生成图不代替真实证据 |
 | 表格、数据与比例 | `executor-table.md`、`executor-chart.md`、`native-data-interface.md` | 真实数据进入原生可编辑表格/图表，仅在本次需要时启用 | 数据、单位、比较基准准确；定性图不冒充定量 |
-| 逐页作者与投影排版 | `executor-base.md`、`shared-standards-core.md`、字体校准与质量检查脚本 | 主作者连续设计完整 SVG，按教学阅读距离校准；前五页内部回看 | 共同语言成立，代表关系页没有退化；不以批量窄模板替代 |
+| 逐页作者与投影排版 | `executor-base.md` §2.2九步、`shared-standards-core.md`、字体校准与质量检查脚本 | 主作者连续设计完整 SVG，先任务和语义、后构图坐标；按教学阅读距离校准，前五页内部回看 | 共同语言成立，代表关系页没有退化；不以批量窄模板替代 |
 | 原稿备注与简单点击 | `executor-notes.md`、`animations.md`，官方备注、动画和导出脚本 | 原段分配到同名备注；教师点击按理解步骤揭示对象 | 原稿覆盖、点击目标/次序/状态正确，无默认视频或自动翻页 |
 | 原生导出与成品审阅 | 官方 `finalize_svg.py`、`svg_to_pptx.py`、`visual-review.md` | 适配脚本补来源、素材、备注、版本和显隐检查；独立审阅补教学关系与设计目标判断 | 当前 PPTX 真实渲染，专业参照达到后才交付；机械通过不等于美感通过 |
 

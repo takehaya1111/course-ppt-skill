@@ -3,6 +3,7 @@
   "officialCommit": "ca04346de145ed6462ddf34682848e71df5e20a2",
   "packages": {"jszip": "3.10.1", "xml-js": "1.6.11"},
   "pythonPackages": {"python-pptx": "1.0.2", "Pillow": "12.3.0", "lxml": "6.1.1", "XlsxWriter": "3.2.9", "openpyxl": "3.1.5"},
+  "optionalPythonPackages": {"pdfRendering": {"pypdfium2": "5.14.0"}},
   "officeCli": {"required": false, "testedVersion": "1.0.155"},
   "scope": "固定原生导出核心依赖；扩展功能按上游要求另行安装。OfficeCLI 缺失时明确标记未检查，不表示格式校验通过。"
 }

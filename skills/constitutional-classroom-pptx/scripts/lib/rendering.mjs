@@ -90,40 +90,104 @@ export async function renderPptx({runtime,projectDir,sourceFile,outputDir,pages,
     }
     await assertSnapshot(source);
     return await finish(output,{kind:'pptx',projectDir,command,engine:{name:report.application,backend:'office',version:report.version,method:report.method},rawReport:{path:reportFile,sha256:await digest(reportFile)},records});
-  }catch(error){await save(path.join(output,'render-failure.json'),{status:'FAILED',error:error.message}).catch(()=>{});throw new Error(`${error.message}\nOffice实显失败；不会静默更换软件。若已安装LibreOffice和pdftoppm，可显式重试 --backend libreoffice。`,{cause:error});}
+  }catch(error){await save(path.join(output,'render-failure.json'),{status:'FAILED',error:error.message}).catch(()=>{});throw new Error(`${error.message}\nOffice实显失败；不会静默更换软件。若已配置LibreOffice与PDF光栅化程序，可显式重试 --backend libreoffice；安装说明见INSTALL.md。`,{cause:error});}
   finally{await lock.close();await fs.unlink(lockPath);}
 }
 
 async function discoverRenderer(runtime,variable,candidates,versionArgs){
   const explicit=process.env[variable],files=explicit?[explicit]:[...new Set(candidates.filter(Boolean))];
-  for(const [index,file] of files.entries()){try{const args=typeof versionArgs==='function'?versionArgs(index):versionArgs,result=await runtime.run(file,args,{timeout:20000});return{file,version:(result.stdout||result.stderr||'').trim()};}catch(error){if(explicit)throw new Error(`${variable}指定的程序不可用：${file}；${error.message}`);}}
+  for(const [index,file] of files.entries()){try{const args=typeof versionArgs==='function'?versionArgs(index):versionArgs,result=await runtime.run(file,args,{timeout:20000});return{file,version:(result.stdout||result.stderr||'').trim()};}catch(error){if(explicit)throw new Error(`${variable}指定的程序不可用：${file}；${error.message}`,{cause:error});}}
   throw new Error(`缺少可用的${candidates[0]}；请安装所需程序或设置${variable}。不自动安装或改用SVG。`);
 }
 
+/** WB's PDFium fallback, constrained to automatic discovery only. Explicit broken
+ * configuration is an error, not permission to silently change the chosen tool.
+ * Availability means a real in-memory native render and PNG encoding, not --version.
+ */
+async function resolveLibreOfficeRasterizer(runtime){
+  let fallbackReason;
+  try{
+    const found=await discoverRenderer(runtime,'PPT_SKILL_PDFTOPPM',['pdftoppm'],['-v']);
+    return{...found,args:[],mode:'external-cli',label:'pdftoppm',scriptSha256:null,fallbackReason:null};
+  }catch(error){
+    if(process.env.PPT_SKILL_PDFTOPPM)throw error;
+    fallbackReason=error.message;
+  }
+  const script=path.join(runtime.skillDir,'scripts/pdf-raster.py');
+  assert(await fs.access(script).then(()=>true,()=>false),'缺少技能内PDF光栅化脚本，请恢复完整安装或安装poppler。');
+  const command={file:runtime.config.executable,args:[script,'--probe-json']};
+  let output;
+  try{output=await runtime.run(command.file,command.args,{timeout:20000});}
+  catch(error){throw new Error(`pdftoppm自动发现失败，PDFium回退也不可用。请运行 node scripts/setup.mjs --pdf-rendering；如设置PPT_SKILL_PYTHON，须在该解释器中安装requirements-rendering.txt。${error.stderr||error.message}`,{cause:error});}
+  const probe=JSON.parse(output.stdout.trim());
+  assert(probe.schema==='course-pdf-raster-probe.v1'&&probe.status==='AVAILABLE'&&probe.nativeRenderAndPng===true&&probe.pdfiumVersion,'PDF光栅化探测未确认实际原生渲染及PNG编码');
+  const lock=runtime.lock??await read(path.join(runtime.skillDir,'runtime-lock.json'));
+  const expected=lock.optionalPythonPackages?.pdfRendering?.pypdfium2;
+  assert(expected&&probe.packages?.pypdfium2===expected,`可选渲染依赖版本不符：pypdfium2=${probe.packages?.pypdfium2??'未知'}，要求${expected??'缺少依赖锁'}；请按requirements-rendering.txt安装。`);
+  return{file:command.file,args:[script],mode:'skill-local',label:'pypdfium2（技能内pdf-raster.py）',version:`pypdfium2 ${probe.packages.pypdfium2}; PDFium ${probe.pdfiumVersion}`,scriptSha256:await digest(script),fallbackReason,probe};
+}
+
+function executionError(error){
+  const detail=error.cause??error;
+  return{message:error.message,code:detail.code??null,signal:detail.signal??null,stdout:detail.stdout||'',stderr:detail.stderr||''};
+}
+
 async function renderLibreOffice({runtime,projectDir,source,output,images,selected,pageCount}){
+  const resolved={soffice:null,rasterizer:null},attempts=[],rasterizationAttempts=[];
+  const logs=[],records=[];
+  const listing=async dir=>(await fs.readdir(dir).catch(()=>[])).sort();
+  const invoke=async(command,collection,timeout)=>{
+    const entry={attempt:collection.length+1,command,startedAt:new Date().toISOString(),finishedAt:null,stdout:'',stderr:'',exitCode:null,error:null};
+    collection.push(entry);
+    try{
+      const result=await runtime.run(command.file,command.args,{timeout});
+      Object.assign(entry,{stdout:result.stdout||'',stderr:result.stderr||'',exitCode:0});
+      return result;
+    }catch(error){
+      const detail=executionError(error);Object.assign(entry,{stdout:detail.stdout,stderr:detail.stderr,exitCode:Number.isInteger(detail.code)?detail.code:null,error:detail});throw error;
+    }finally{entry.finishedAt=new Date().toISOString();logs.push(JSON.stringify(entry));}
+  };
   try{
     const windowsCandidates=['soffice.com',...['ProgramFiles','ProgramFiles(x86)'].map(key=>process.env[key]&&path.join(process.env[key],'LibreOffice/program/soffice.com')),'soffice',...['ProgramFiles','ProgramFiles(x86)'].map(key=>process.env[key]&&path.join(process.env[key],'LibreOffice/program/soffice.exe'))];
     const candidates=process.platform==='win32'?windowsCandidates:['soffice',process.platform==='darwin'?'/Applications/LibreOffice.app/Contents/MacOS/soffice':null];
     // Windows .com is the console launcher; GUI .exe can hang on --version.
     // Version probes must also use a unique profile so they never attach to user sessions.
     const soffice=await discoverRenderer(runtime,'PPT_SKILL_LIBREOFFICE',candidates,index=>[`-env:UserInstallation=${pathToFileURL(path.join(output,`version-profile-${index}`)).href}`,'--headless','--version']);
-    const rasterizer=await discoverRenderer(runtime,'PPT_SKILL_PDFTOPPM',['pdftoppm'],['-v']);
+    resolved.soffice=soffice;
+    const rasterizer=await resolveLibreOfficeRasterizer(runtime);resolved.rasterizer=rasterizer;
+    logs.push(JSON.stringify({resolved}));
     const pdfDir=path.join(output,'pdf'),profile=path.join(output,'libreoffice-profile');await fs.mkdir(pdfDir);
     const command={file:soffice.file,args:[`-env:UserInstallation=${pathToFileURL(profile).href}`,'--headless','--convert-to','pdf:impress_pdf_Export','--outdir',pdfDir,source.snapshotPath]};
-    const result=await runtime.run(command.file,command.args,{timeout:300000});
-    const pdfFile=path.join(pdfDir,'source.pdf'),pdfBytes=await fs.readFile(pdfFile);
+    const pdfFile=path.join(pdfDir,'source.pdf');
+    for(let attempt=1;attempt<=2;attempt++){
+      try{await invoke(command,attempts,300000);}
+      finally{
+        const entry=attempts.at(-1);entry.pdfDir=await listing(pdfDir);entry.outputDir=await listing(output);
+        entry.pdfPresent=await fs.access(pdfFile).then(()=>true,()=>false);
+      }
+      if(attempts.at(-1).pdfPresent)break;
+      // Only a successful process with a missing PDF is retried, at most once.
+      // The cause is not assumed; independent profiles do not prove an old instance.
+      if(attempt===1)await new Promise(resolve=>setTimeout(resolve,3000));
+    }
+    assert(attempts.at(-1).pdfPresent,'LibreOffice成功退出但两次均未生成PDF；已保存两次转换记录');
+    const pdfBytes=await fs.readFile(pdfFile);
     assert(pdfBytes.subarray(0,5).toString()==='%PDF-','LibreOffice没有生成有效PDF');
-    const report={input:source.snapshotPath,status:'success',renderer:'libreoffice',slideCount:pageCount,application:'LibreOffice Impress + pdftoppm',version:soffice.version,method:'Alternative-software static rendering: isolated LibreOffice profile PPTX→PDF→PNG; not WPS/PowerPoint display or slideshow playback',conversion:command,pdf:{path:pdfFile,sha256:hash(pdfBytes)},rasterizer,slides:[]};
-    const logs=[`${result.stdout||''}\n${result.stderr||''}`],records=[];
+    const report={input:source.snapshotPath,status:'success',renderer:'libreoffice',slideCount:pageCount,application:`LibreOffice Impress + ${rasterizer.label}`,version:soffice.version,method:'Alternative-software static rendering: isolated LibreOffice profile PPTX→PDF→PNG; not WPS/PowerPoint display or slideshow playback',conversion:command,conversionAttempts:attempts,pdf:{path:pdfFile,sha256:hash(pdfBytes)},rasterizer,rasterizationAttempts,slides:[]};
     for(const page of selected){
-      const prefix=path.join(images,`slide-${String(page).padStart(2,'0')}`),args=['-png','-scale-to-x','1600','-scale-to-y','-1','-f',String(page),'-l',String(page),'-singlefile',pdfFile,prefix];
-      const converted=await runtime.run(rasterizer.file,args,{timeout:120000});logs.push(`${converted.stdout||''}\n${converted.stderr||''}`);
+      const prefix=path.join(images,`slide-${String(page).padStart(2,'0')}`),args=[...rasterizer.args,'-png','-scale-to-x','1600','-scale-to-y','-1','-f',String(page),'-l',String(page),'-singlefile',pdfFile,prefix];
+      await invoke({file:rasterizer.file,args},rasterizationAttempts,120000);
       const image=await imageEntry(`${prefix}.png`);records.push({page,source,image});report.slides.push({index:page,image:image.path,command:{file:rasterizer.file,args}});
     }
     assert(await digest(pdfFile)===report.pdf.sha256,'PDF在逐页渲染期间已变化');await assertSnapshot(source);
     const reportFile=path.join(output,'libreoffice-render-report.json');await save(reportFile,report);await fs.writeFile(path.join(output,'renderer.log'),logs.join('\n'),{flag:'wx'});
-    return await finish(output,{kind:'pptx',projectDir,command,engine:{name:report.application,backend:'libreoffice',version:report.version,method:report.method},rawReport:{path:reportFile,sha256:await digest(reportFile)},records});
-  }catch(error){await save(path.join(output,'render-failure.json'),{status:'FAILED',error:error.message}).catch(()=>{});throw error;}
+    return await finish(output,{kind:'pptx',projectDir,command,engine:{name:report.application,backend:'libreoffice',version:report.version,method:report.method,rasterizerMode:rasterizer.mode},rawReport:{path:reportFile,sha256:await digest(reportFile)},records});
+  }catch(error){
+    const failure={status:'FAILED',error:error.message,processError:executionError(error),resolved,conversionAttempts:attempts,rasterizationAttempts};
+    await save(path.join(output,'render-failure.json'),failure).catch(()=>{});
+    logs.push(JSON.stringify({failure}));await fs.writeFile(path.join(output,'renderer.log'),logs.join('\n'),{flag:'wx'}).catch(()=>{});
+    throw error;
+  }
 }
 
 /** Use the unchanged official SVG renderer and its project-identity health check.

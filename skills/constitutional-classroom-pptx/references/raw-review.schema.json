@@ -86,7 +86,7 @@
             "type": "object",
             "required": ["spec_says", "render_delivers", "note"],
             "properties": {
-              "spec_says": {"$ref": "#/$defs/text", "description": "逐字引用包内本页 §IX 任务；运行时检查它属于本页冻结原文。"},
+              "spec_says": {"$ref": "#/$defs/text", "description": "完整保留包内本页specSection；运行时只规范换行与首尾空白后核全文一致，不能截取标题、单句或单字符。"},
               "render_delivers": {"type": "boolean", "description": "实际观察后填写是否兑现设计意图。"},
               "note": {"$ref": "#/$defs/text"}
             }

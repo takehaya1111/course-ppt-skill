@@ -12,6 +12,7 @@ import xmljs from 'xml-js';
 import {runStageCommand, assertBuildStages, collectProductionInputs, finishBuildRecord,finishStatesRecord,validateOriginalDesign} from './native-stages.mjs';
 import {createEnvironment as environment} from './lib/environment.mjs';
 import {renderPptx,renderSvgPreview} from './lib/rendering.mjs';
+import {authoringAdvisories} from './lib/upstream-notices.mjs';
 
 const require=createRequire(import.meta.url);
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
@@ -76,7 +77,7 @@ async function doctor(runtime){
   const version=await run(config.executable,['-c',"import json,importlib.metadata as m; import pptx,PIL,lxml,xlsxwriter,openpyxl; print(json.dumps({n:m.version(n) for n in ['python-pptx','Pillow','lxml','XlsxWriter','openpyxl']}))"]);
   const packages=JSON.parse(version.stdout.trim());
   for(const [name,expected]of Object.entries(config.packages))assert(packages[name]===expected,`Python依赖版本漂移：${name}`);
-  return{status:'PASS',node:process.versions.node,python:config.executable,packages,dependencies,officeCli:runtime.officeCli,officialCommit:lock.officialCommit,integrity:'official attribution guard + required core files + dependency versions',limitations:['归属检查不等于逐个源码文件的密码学校验。','OfficeCLI 为可选附加格式检查；SKIPPED 不表示该项通过。','环境可用不等于设计、视觉或真实放映通过。']};
+  return{status:'PASS',node:process.versions.node,python:config.executable,packages,dependencies,officeCli:runtime.officeCli,optionalDependencies:{pdfRendering:{status:'NOT_CHECKED',packages:lock.optionalPythonPackages?.pdfRendering||{},install:'node scripts/setup.mjs --pdf-rendering',note:'仅实际LibreOffice→PDFium分支验证；核心通过不代表可选渲染已配置。'}},officialCommit:lock.officialCommit,integrity:'official attribution guard + required core files + dependency versions',limitations:['归属检查不等于逐个源码文件的密码学校验。','OfficeCLI 为可选附加格式检查；SKIPPED 不表示该项通过。','环境可用不等于设计、视觉或真实放映通过。']};
 }
 
 // Call the upstream converter itself rather than guessing Markdown-to-notes behavior.
@@ -276,6 +277,18 @@ async function artifact(projectData,pptx,runtime,reportDir,makeStates=false){
   return report;
 }
 
+export function parseRenderOptions(extra,root){
+  const options={backend:'auto'},seen=new Set();
+  for(let i=0;i<extra.length;i+=2){
+    const key=extra[i],value=extra[i+1];
+    assert(['--backend','--output-dir'].includes(key)&&!seen.has(key)&&typeof value==='string'&&value.trim()&&!value.startsWith('--'),'render仅接受一次--backend和一次--output-dir，均须提供有效值');
+    seen.add(key);
+    if(key==='--backend'){assert(['office','libreoffice'].includes(value),'未知显式渲染后端');options.backend=value;}
+    else options.outputDir=path.resolve(root,value);
+  }
+  return options;
+}
+
 export async function runNativeCommand(args,{root,skillDir}){
   const [command,projectArg,pptxArg,...extra]=args;
   assert(['doctor','init','prepare','gate','build','check','states','render','render-svg','review-pack','review-import','release-check'].includes(command),'原生路线命令：doctor | init | prepare | gate | build | check | states | render | render-svg | review-pack | review-import | release-check');
@@ -294,9 +307,9 @@ export async function runNativeCommand(args,{root,skillDir}){
     const result={status:'INITIALIZED_NOT_AUTHORED',project};console.log(JSON.stringify(result,null,2));return result;
   }
   if(['render','render-svg'].includes(command)){
-    assert(!extra.length||(command==='render'&&extra.length===2&&extra[0]==='--backend'&&['office','libreoffice'].includes(extra[1])),'render只接受显式 --backend office|libreoffice');
+    const options=command==='render'?parseRenderOptions(extra,root):{};
     assert(pptxArg,'缺少渲染源路径');await doctor(runtime);
-    const result=command==='render'?await renderPptx({runtime,projectDir:project,sourceFile:path.resolve(root,pptxArg),backend:extra[1]||'auto'}):await renderSvgPreview({runtime,projectDir:project,svgProjectDir:path.resolve(root,pptxArg)});
+    const result=command==='render'?await renderPptx({runtime,projectDir:project,sourceFile:path.resolve(root,pptxArg),...options}):await renderSvgPreview({runtime,projectDir:project,svgProjectDir:path.resolve(root,pptxArg)});
     console.log(JSON.stringify(result,null,2));return result;
   }
   if(!['prepare','gate','review-pack','review-import','release-check'].includes(command))assert(command==='build'?!pptxArg:Boolean(pptxArg),command==='build'?'build输出由时间戳确定，不接受覆盖目标':'缺少PPTX路径');
@@ -314,7 +327,7 @@ export async function runNativeCommand(args,{root,skillDir}){
       console.log(JSON.stringify({...result,reportDir},null,2));return{...result,reportDir};
     }
     await step('environment',()=>doctor(runtime));let data=await step('course-input',()=>validateNativeProject(project,runtime));
-    let inputFingerprint,stages;
+    let inputFingerprint,stages,upstreamAdvisories;
     if(command==='build'){
       await step('original-design-schema',()=>validateOriginalDesign(runtime,project,reportDir));
       stages=await step('production-stages',()=>assertBuildStages(project,data.contract));
@@ -322,6 +335,8 @@ export async function runNativeCommand(args,{root,skillDir}){
       for(const file of ['design_spec.md','spec_lock.md'])assert((await fs.readFile(await localFile(project,file),'utf8')).trim(),`缺少设计文件：${file}`);
       await upstream('project_manager.py',['validate',project]);
       await upstream('svg_quality_checker.py',[project,'--canonical-authoring','--stage','final','--json']);
+      const qualityFile=path.join(project,'validation/svg_quality_report.json');
+      upstreamAdvisories=authoringAdvisories(await read(qualityFile),{python:runtime.config.executable,official:runtime.official,project,reportPath:qualityFile});
       if(await exists(path.join(project,'animations.json')))await upstream('animation_config.py',['validate',project]);
       else assert(data.contract.slides.every(s=>s.clicks===0),'有点击计划但缺少 animations.json');
       if(await exists(path.join(project,'notes/total.md'))){
@@ -337,6 +352,7 @@ export async function runNativeCommand(args,{root,skillDir}){
     const report=await step('actual-artifact',()=>artifact(data,output,runtime,reportDir,command==='states'));
     if(command==='states')await step('register-actual-states',()=>finishStatesRecord(project,reportDir,report,data.contract));
     const result={status:'MECHANICAL_PASS',project,pptx:output,reportDir,sha256:report.sha256,timings,officeValidation:report.officeValidation,visualReview:'NOT_REVIEWED',actualPlayback:'NOT_TESTED'};
+    if(upstreamAdvisories)result.upstreamAdvisories=upstreamAdvisories;
     if(command==='build'){
       const copiedReport=path.join(reportDir,'svg_quality_report.json');await fs.copyFile(path.join(project,'validation/svg_quality_report.json'),copiedReport);
       await finishBuildRecord(project,reportDir,result,inputFingerprint,await collectProductionInputs(project,data.contract),stages,copiedReport);

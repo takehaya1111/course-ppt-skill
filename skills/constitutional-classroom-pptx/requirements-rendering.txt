@@ -1,0 +1,3 @@
+# Optional PDF-to-PNG fallback for the explicit LibreOffice render branch.
+# Install into the skill-local environment: node scripts/setup.mjs --pdf-rendering
+pypdfium2==5.14.0

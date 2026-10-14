@@ -4,6 +4,7 @@
 import {evaluatePolicyEvidence} from './review-policy.mjs';
 export function evaluateReviewEvidence({review,pack,packHash}){
   const errors=[],fail=m=>errors.push(m),text=v=>typeof v==='string'&&v.trim(),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+  const normalizeBlock=v=>typeof v==='string'?v.replace(/\r\n?/g,'\n').trim():null;
   if(!pack||pack.schema!=='course-review-pack.v1')return{pass:false,errors:['缺少程序冻结的真实审阅包；旧版自填pass/independent不能沿用']};
   if(!review||review.schema!=='course-raw-review.v1')return{pass:false,errors:['缺少独立上下文原始逐页报告']};
   errors.push(...evaluatePolicyEvidence({review,pack}));
@@ -30,7 +31,7 @@ export function evaluateReviewEvidence({review,pack,packHash}){
     if(p.status!=='ok'||!Array.isArray(p.findings)||p.findings.some(f=>f?.severity==='hard')||!Array.isArray(p.needs_human_items)||p.needs_human_items.length)fail(`第${id}页未通过原版逐页审阅或仍需人工处理`);
     for(const f of ['pageJob','relationships','realization','observations'])if(!text(p[f]))fail(`第${id}页缺少${f}实际判断`);
     const intent=p.design_intent_check;
-    if(!text(intent?.spec_says)||!wanted.specSection.includes(intent.spec_says)||intent.render_delivers!==true||!text(intent.note))fail(`第${id}页未兑现既定§IX任务与关系，或未提供真实design_intent_check`);
+    if(!text(intent?.spec_says)||normalizeBlock(wanted.specSection)!==normalizeBlock(intent.spec_says)||intent.render_delivers!==true||!text(intent.note))fail(`第${id}页未兑现既定§IX任务与关系，或design_intent_check未完整引用本页冻结页卡`);
     if(p.state===Math.max(...pack.states.filter(s=>s.slide===p.slide).map(s=>s.state))){
       if(!text(p.carrierCheck))fail(`第${id}页缺少carrierCheck实际载体判断`);
       if(!Array.isArray(p.referenceComparisons)||!p.referenceComparisons.length||p.referenceComparisons.some(r=>!pack.references.some(x=>x.id===r.referenceId)||!text(r.observation)))fail(`第${id}页缺少真实参照图比较`);

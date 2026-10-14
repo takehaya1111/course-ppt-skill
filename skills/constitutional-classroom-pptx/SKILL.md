@@ -2,7 +2,7 @@
 name: constitutional-classroom-pptx
 description: 根据高校宪法学等人文社科课程的大纲与逐字稿编排PPT设计纲，在PPT Master完整设计能力上加入教学定制，制作、修改和检查可编辑课堂PPTX及简单点击动效。用于教师日常课件；不自动接管其他课程工程或备课软件。
 metadata:
-  version: "0.5.2"
+  version: "0.5.3"
 ---
 
 # 课程pptskill

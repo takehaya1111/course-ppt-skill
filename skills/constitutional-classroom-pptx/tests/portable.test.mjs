@@ -21,6 +21,17 @@ const base=()=>({
   pages:[{slide:1,state:0,pageJob:'测试任务',relationships:'测试关系',realization:'测试表达',observations:'测试观察',carrierCheck:'测试表达任务，数量不等于设计质量',status:'ok',findings:[],needs_human_items:[],design_intent_check:{spec_says:pack.states[0].specSection,render_delivers:true,note:'合成字段测试'},referenceComparisons:[{referenceId:'test-reference',observation:'合成比较，不代表看图'}],styleChecks:[],...syntheticPagePolicy(pack)}]
 });
 const evaluate=review=>evaluateReviewEvidence({review,pack,packHash:'pack-hash'});
+test('逐页依据不能截成单字符、标题或删去条件的片段',()=>{
+  const specSection='#### Slide 01 - 条件与结果\n- **Content**: 预约且携证才可申请；仍需核验。\n- **Relationships**: 条件共同限定申请，并不保证进入。';
+  const fullPack={...pack,states:[{...pack.states[0],specSection}]};
+  for(const excerpt of ['#','#### Slide 01 - 条件与结果','- **Content**: 预约且携证才可申请；仍需核验。']){
+    const r=base();r.pages[0].design_intent_check.spec_says=excerpt;
+    const result=evaluateReviewEvidence({review:r,pack:fullPack,packHash:'pack-hash'});
+    assert.equal(result.pass,false);assert.match(result.errors.join(' '),/完整引用/);
+  }
+  const r=base();r.pages[0].design_intent_check.spec_says='\n'+specSection.replaceAll('\n','\r\n')+'\n';
+  assert.equal(evaluateReviewEvidence({review:r,pack:fullPack,packHash:'pack-hash'}).pass,true);
+});
 test('完整合成证据结构通过；函数明确不评定实际美感',()=>{
   const result=evaluate(base());assert.equal(result.pass,true);assert.match(result.scope,/不自动判定/);
 });

@@ -1,0 +1,6 @@
+interface:
+  display_name: "课程pptskill"
+  short_description: "在PPT Master完整设计能力上加入课程定制，从大纲与逐字稿制作可编辑课件及简单点击动效"
+  default_prompt: "使用 $constitutional-classroom-pptx 读取本次课程大纲与逐字稿，把教学要求加入PPT Master完整设计流程，对照优秀内容页制作并检查可编辑课堂PPTX。"
+policy:
+  allow_implicit_invocation: true

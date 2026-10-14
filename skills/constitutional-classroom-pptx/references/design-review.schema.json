@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "独立实际看图后的设计审阅记录",
+  "description": "最终审阅绑定artifactHash/buildRecordHash；early审阅改绑earlyRecordHash。程序只核证据和覆盖，不能生成观看或审美结论。",
+  "type": "object",
+  "required": ["designSpecHash", "specLockHash", "reviewer", "reviewedAt", "status", "pages", "deckReview", "designTarget", "limitations", "unresolvedIssues"],
+  "oneOf": [{"required": ["artifactHash", "buildRecordHash"]}, {"required": ["earlyRecordHash"]}],
+  "properties": {
+    "artifactHash": {"$ref": "#/$defs/hash"}, "buildRecordHash": {"$ref": "#/$defs/hash"}, "earlyRecordHash": {"$ref": "#/$defs/hash"},
+    "designSpecHash": {"$ref": "#/$defs/hash"}, "specLockHash": {"$ref": "#/$defs/hash"},
+    "stateReportPath": {"type": "string", "minLength": 1}, "stateReportHash": {"$ref": "#/$defs/hash"},
+    "reviewer": {"type": "object", "required": ["kind", "name", "independent"], "properties": {"kind": {"enum": ["human", "agent"]}, "name": {"type": "string", "minLength": 1}, "independent": {"const": true}}},
+    "reviewedAt": {"type": "string", "format": "date-time"}, "status": {"enum": ["pass", "fail"]},
+    "unresolvedIssues": {"type": "array", "items": {"type": "string"}}, "limitations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "deckReview": {"type": "object", "required": ["continuity", "hierarchy", "compositionByJob", "referenceComparison"], "properties": {"continuity": {"type": "string", "minLength": 1}, "hierarchy": {"type": "string", "minLength": 1}, "compositionByJob": {"type": "string", "minLength": 1}, "referenceComparison": {"type": "string", "minLength": 1}}},
+    "designTarget": {
+      "type": "object",
+      "description": "独立审阅者对既定专业设计目标的结论；非程序自动美感评分。未达到时不得交付为已完成。",
+      "required": ["status", "reference", "criteria", "comparison", "remainingGaps"],
+      "properties": {
+        "status": {"enum": ["met", "not_met"]},
+        "reference": {"type": "string", "minLength": 1},
+        "criteria": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "comparison": {"type": "string", "minLength": 1},
+        "remainingGaps": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      },
+      "allOf": [{"if": {"properties": {"status": {"const": "met"}}}, "then": {"properties": {"remainingGaps": {"maxItems": 0}}}}]
+    },
+    "pages": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["slide", "state", "imagePath", "imageHash", "renderSourcePath", "renderSourceHash", "pageJob", "relationships", "realization", "observations", "status", "unresolvedIssues"], "properties": {
+      "slide": {"type": "integer", "minimum": 1}, "state": {"type": "integer", "minimum": 0},
+      "imagePath": {"type": "string", "minLength": 1}, "imageHash": {"$ref": "#/$defs/hash"}, "renderSourcePath": {"type": "string", "minLength": 1}, "renderSourceHash": {"$ref": "#/$defs/hash"},
+      "pageJob": {"type": "string", "minLength": 1}, "relationships": {"type": "string", "minLength": 1}, "realization": {"type": "string", "minLength": 1}, "observations": {"type": "string", "minLength": 1},
+      "status": {"enum": ["pass", "fail"]}, "unresolvedIssues": {"type": "array", "items": {"type": "string"}}
+    }}}
+  },
+  "allOf": [{"if": {"properties": {"status": {"const": "pass"}}}, "then": {"properties": {"designTarget": {"properties": {"status": {"const": "met"}}}}}}],
+  "$defs": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

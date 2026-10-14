@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "原生课程制作契约",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "title", "sources", "slides", "assets"],
+  "properties": {
+    "version": {"const": 1},
+    "title": {"type": "string", "minLength": 1},
+    "sources": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["id", "path", "sha256", "kind"], "properties": {"id": {"type": "string", "minLength": 1}, "path": {"type": "string", "minLength": 1}, "sha256": {"$ref": "#/$defs/hash"}, "kind": {"type": "string", "minLength": 1}, "originalPath": {"type": "string"}}}},
+    "slides": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["stem", "clicks"], "properties": {"stem": {"type": "string", "pattern": "^[^./\\\\][^/\\\\]*$"}, "clicks": {"type": "integer", "minimum": 0}, "requiredText": {"type": "array", "items": {"type": "string", "minLength": 1}}, "noteParagraphs": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["sourceId", "indices"], "properties": {"sourceId": {"type": "string", "minLength": 1}, "indices": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "integer", "minimum": 1}}}}}}}},
+    "assets": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "path", "sha256", "kind", "sourceUrl", "slides"], "properties": {"id": {"type": "string", "minLength": 1}, "path": {"type": "string", "minLength": 1}, "sha256": {"$ref": "#/$defs/hash"}, "kind": {"type": "string", "minLength": 1}, "sourceUrl": {"type": "string", "minLength": 1}, "slides": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}, "exactBytes": {"const": true, "default": true}}}},
+    "requireFullScriptCoverage": {"description": "所列sourceId的全部空行分隔段落必须恰好分配一次；标题也计一段。", "type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "export": {"type": "object", "additionalProperties": false, "properties": {"nativeChartsAndTables": {"type": "boolean", "default": false}}}
+  },
+  "$defs": {"hash": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"}}
+}

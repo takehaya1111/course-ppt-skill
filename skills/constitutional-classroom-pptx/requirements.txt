@@ -1,0 +1,9 @@
+# Fixed dependencies for the supported native export/check route.
+# Install only into the skill-local .venv using scripts/setup.mjs.
+# Other source conversion, image-generation and advanced vector features:
+# consult vendor/ppt-master/skills/ppt-master/requirements.txt and install only what you use.
+python-pptx==1.0.2
+Pillow==12.3.0
+lxml==6.1.1
+XlsxWriter==3.2.9
+openpyxl==3.1.5

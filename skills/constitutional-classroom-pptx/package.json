@@ -1,0 +1,16 @@
+{
+  "name": "constitutional-classroom-pptx",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "课程教学定制与完整 PPT Master 原生制作路线",
+  "license": "MIT",
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "doctor": "node scripts/run.mjs doctor",
+    "setup": "node scripts/setup.mjs",
+    "test": "node --test tests/portable.test.mjs",
+    "test:integration": "node tests/integration.mjs"
+  },
+  "dependencies": {"jszip": "3.10.1", "xml-js": "1.6.11"}
+}

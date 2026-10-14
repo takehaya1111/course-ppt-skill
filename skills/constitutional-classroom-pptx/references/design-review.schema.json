@@ -1,38 +1,36 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "独立实际看图后的设计审阅记录",
-  "description": "最终审阅绑定artifactHash/buildRecordHash；early审阅改绑earlyRecordHash。程序只核证据和覆盖，不能生成观看或审美结论。",
+  "title": "导入后的设计审阅文件绑定记录",
+  "description": "course-design-review.v2 由 review-import 生成，只保存当前制作绑定、冻结审阅包、原始审阅报告及宿主指派记录的文件凭据。外层没有审美结论或独立性布尔开关；结论保留在按哈希绑定的原始报告中。导入完成不等于交付检查通过。",
+  "$comment": "这是文件结构说明，不替代 scripts/lib/review-package.mjs 与 review-evidence.mjs 的运行时校验。运行时重新计算文件哈希，核对当前制作记录、审阅包、渲染来源/页/图映射、全部有效状态、原始报告及宿主证据之间的关联；这些关联不能仅靠本模式证明。程序不自动判断语义、美感、真实观看、反伪造或用户认可。",
   "type": "object",
-  "required": ["designSpecHash", "specLockHash", "reviewer", "reviewedAt", "status", "pages", "deckReview", "designTarget", "limitations", "unresolvedIssues"],
-  "oneOf": [{"required": ["artifactHash", "buildRecordHash"]}, {"required": ["earlyRecordHash"]}],
+  "additionalProperties": false,
+  "required": ["schema", "designSpecHash", "specLockHash", "reviewPack", "rawReport", "dispatchRecord"],
+  "oneOf": [
+    {"required": ["artifactHash", "buildRecordHash"], "not": {"required": ["earlyRecordHash"]}},
+    {"required": ["earlyRecordHash"], "not": {"anyOf": [{"required": ["artifactHash"]}, {"required": ["buildRecordHash"]}]}}
+  ],
   "properties": {
-    "artifactHash": {"$ref": "#/$defs/hash"}, "buildRecordHash": {"$ref": "#/$defs/hash"}, "earlyRecordHash": {"$ref": "#/$defs/hash"},
-    "designSpecHash": {"$ref": "#/$defs/hash"}, "specLockHash": {"$ref": "#/$defs/hash"},
-    "stateReportPath": {"type": "string", "minLength": 1}, "stateReportHash": {"$ref": "#/$defs/hash"},
-    "reviewer": {"type": "object", "required": ["kind", "name", "independent"], "properties": {"kind": {"enum": ["human", "agent"]}, "name": {"type": "string", "minLength": 1}, "independent": {"const": true}}},
-    "reviewedAt": {"type": "string", "format": "date-time"}, "status": {"enum": ["pass", "fail"]},
-    "unresolvedIssues": {"type": "array", "items": {"type": "string"}}, "limitations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-    "deckReview": {"type": "object", "required": ["continuity", "hierarchy", "compositionByJob", "referenceComparison"], "properties": {"continuity": {"type": "string", "minLength": 1}, "hierarchy": {"type": "string", "minLength": 1}, "compositionByJob": {"type": "string", "minLength": 1}, "referenceComparison": {"type": "string", "minLength": 1}}},
-    "designTarget": {
-      "type": "object",
-      "description": "独立审阅者对既定专业设计目标的结论；非程序自动美感评分。未达到时不得交付为已完成。",
-      "required": ["status", "reference", "criteria", "comparison", "remainingGaps"],
-      "properties": {
-        "status": {"enum": ["met", "not_met"]},
-        "reference": {"type": "string", "minLength": 1},
-        "criteria": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-        "comparison": {"type": "string", "minLength": 1},
-        "remainingGaps": {"type": "array", "items": {"type": "string", "minLength": 1}}
-      },
-      "allOf": [{"if": {"properties": {"status": {"const": "met"}}}, "then": {"properties": {"remainingGaps": {"maxItems": 0}}}}]
-    },
-    "pages": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["slide", "state", "imagePath", "imageHash", "renderSourcePath", "renderSourceHash", "pageJob", "relationships", "realization", "observations", "status", "unresolvedIssues"], "properties": {
-      "slide": {"type": "integer", "minimum": 1}, "state": {"type": "integer", "minimum": 0},
-      "imagePath": {"type": "string", "minLength": 1}, "imageHash": {"$ref": "#/$defs/hash"}, "renderSourcePath": {"type": "string", "minLength": 1}, "renderSourceHash": {"$ref": "#/$defs/hash"},
-      "pageJob": {"type": "string", "minLength": 1}, "relationships": {"type": "string", "minLength": 1}, "realization": {"type": "string", "minLength": 1}, "observations": {"type": "string", "minLength": 1},
-      "status": {"enum": ["pass", "fail"]}, "unresolvedIssues": {"type": "array", "items": {"type": "string"}}
-    }}}
+    "schema": {"const": "course-design-review.v2"},
+    "artifactHash": {"$ref": "#/$defs/hash", "description": "最终审阅绑定的当前 PPTX 哈希。"},
+    "buildRecordHash": {"$ref": "#/$defs/hash", "description": "最终审阅绑定的制作记录哈希。"},
+    "earlyRecordHash": {"$ref": "#/$defs/hash", "description": "早期审阅绑定的前五页检查记录哈希。"},
+    "designSpecHash": {"$ref": "#/$defs/hash"},
+    "specLockHash": {"$ref": "#/$defs/hash"},
+    "reviewPack": {"$ref": "#/$defs/fileReceipt", "description": "程序冻结的 course-review-pack.v1 文件；含只读材料、参照、状态图及对应任务。"},
+    "rawReport": {"$ref": "#/$defs/fileReceipt", "description": "独立上下文返回的 course-raw-review.v1 原件，结构见 raw-review.schema.json。"},
+    "dispatchRecord": {"$ref": "#/$defs/fileReceipt", "description": "course-review-dispatch.v1 宿主记录，结构见 review-dispatch.schema.json。"}
   },
-  "allOf": [{"if": {"properties": {"status": {"const": "pass"}}}, "then": {"properties": {"designTarget": {"properties": {"status": {"const": "met"}}}}}}],
-  "$defs": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "fileReceipt": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string", "pattern": "\\S", "description": "实际文件的绝对路径。"},
+        "sha256": {"$ref": "#/$defs/hash"}
+      }
+    }
+  }
 }

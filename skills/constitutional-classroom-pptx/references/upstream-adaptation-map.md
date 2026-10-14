@@ -18,6 +18,8 @@
 
 ## 怎样证明“本次用了”
 
+v0.5.1在既有路线内直接接入三项原版机制：`project_specs.validate_markdown_schema`检查原版设计纲/锁；`svg_quality`的`carrier_receipt`进入制作及审阅事实包；`visual_review.render_pages`用于早期SVG快照，原版逐页`design_intent_check`、发现清单和Style Review Focus用于独立实看。PPTX状态渲染的源文件/页号/图片绑定及宿主指派/返回是为Office成品补的薄适配；不更改原版导出器，也不把统计升级为自动审美判断。原版视觉审阅可选，本课程要求实际独立审阅是明确的教学定制。
+
 不需要每次写调研报告。作者记录简短保留三列即可：
 
 | 选用资源 | 本次采用的行为或部件 | 实际落点及观察 |

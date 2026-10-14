@@ -2,7 +2,7 @@
 name: constitutional-classroom-pptx
 description: 根据高校宪法学等人文社科课程的大纲与逐字稿编排PPT设计纲，在PPT Master完整设计能力上加入教学定制，制作、修改和检查可编辑课堂PPTX及简单点击动效。用于教师日常课件；不自动接管其他课程工程或备课软件。
 metadata:
-  version: "0.5.0"
+  version: "0.5.1"
 ---
 
 # 课程pptskill
@@ -34,17 +34,24 @@ node <技能目录>/scripts/run.mjs init <本次工程路径>
 
 ```powershell
 node <技能目录>/scripts/run.mjs prepare <工程>
-# 计划超过6页：仅前5页完成时检查；独立实际看图后再次调用，收录早期审阅
+# 计划超过6页：仅前5页完成时检查
 node <技能目录>/scripts/run.mjs gate <工程> early
-# EARLY_REVIEWED后继续后续页面。6页及以下无需此关卡。
+# 按设计审阅文档渲染该次SVG快照、review-pack --early、独立审阅、review-import --early
+# 再运行gate early，取得EARLY_REVIEWED后写第6页。6页及以下无需此关卡。
 node <技能目录>/scripts/run.mjs build <工程>
 node <技能目录>/scripts/run.mjs check <工程> <本次PPTX>
 node <技能目录>/scripts/run.mjs states <工程> <本次PPTX>
-# 渲染并独立审阅当前PPTX及有效显隐状态后
+# 对states生成的每份状态PPTX运行；无点击全套可直接渲染本次PPTX
+node <技能目录>/scripts/run.mjs render <工程> <状态PPTX> --backend office
+node <技能目录>/scripts/run.mjs review-pack <工程> <实际渲染请求.json>
+# 将返回的审阅包和提示派给真正独立上下文，保留宿主指派、返回原始记录
+node <技能目录>/scripts/run.mjs review-import <工程> <独立原始报告.json> <宿主记录.json>
 node <技能目录>/scripts/run.mjs release-check <工程> <本次PPTX>
 ```
 
 早期检查是内部校准，不新增教师逐批审批。用户已有委托覆盖的选择继续执行，按上游相应委托分支记录真实决定，不伪造界面确认回执。既有课件修订使用制作路线中的修订入口，不能补造过去未发生的早期检查。
+
+`prepare/build`直接调用原版设计纲与执行锁的格式校验；无版本标记不能再按旧格式略过。逐页作者和审阅均使用原版“实际载体收据”，检查设计纲要求的图文、关系和素材是否落在画面。收据是事实，不是图片配额。`review-pack`只整理冻结事实，原始审阅必须来自实际看图；作者自写`pass/independent:true`、只换姓名、以终态图冒充初态图均不能取得交付通过。宿主不能提供独立上下文时如实保留为自审稿，不能伪造独立记录。
 
 ## 教学与设计约束
 

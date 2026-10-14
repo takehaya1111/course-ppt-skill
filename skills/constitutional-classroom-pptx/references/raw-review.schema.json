@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "独立上下文返回的原始逐页审阅报告",
+  "description": "course-raw-review.v1 由实际审阅者写出，保存观察和判断，允许如实记录失败、未达到及否定结论。本模式不给任何结论设置默认值；符合结构不代表设计通过。",
+  "$comment": "运行时校验 reviewPackHash、被指派上下文、时间、设计目标原文和准则一致性，以及全部 slide/state 的唯一覆盖。交付检查要求实际报告整体 pass、目标 met、无未解决问题或差距；各页须为 ok、无 hard 问题或待人工处理项，且 design_intent_check 为实际肯定判断。每页末态还必须有 carrierCheck、包内真实参照图比较，以及全部已冻结风格重点的实际肯定判断；其他状态可不重复这些整页比较。运行时还另核文件哈希、渲染与宿主证据关联。程序检查记录一致性和所报结论，不自动判断语义、美感、真实观看、反伪造或用户认可。",
+  "type": "object",
+  "required": ["schema", "reviewPackHash", "reviewer", "reviewedAt", "status", "unresolvedIssues", "limitations", "deckReview", "designTarget", "pages"],
+  "not": {"anyOf": [{"required": ["userAccepted"]}, {"required": ["userApproved"]}]},
+  "properties": {
+    "schema": {"const": "course-raw-review.v1"},
+    "reviewPackHash": {"$ref": "#/$defs/hash"},
+    "reviewer": {
+      "type": "object",
+      "required": ["kind", "name", "contextId"],
+      "properties": {
+        "kind": {"enum": ["agent", "human"]},
+        "name": {"$ref": "#/$defs/text"},
+        "contextId": {"$ref": "#/$defs/text", "description": "必须与冻结包及宿主原始指派/返回证据中的审阅上下文一致，并与作者上下文不同；独立性不靠姓名或布尔声明。"}
+      }
+    },
+    "reviewedAt": {"type": "string", "format": "date-time"},
+    "status": {"enum": ["pass", "fail"], "description": "审阅者按实际观察填写的整体结论。"},
+    "unresolvedIssues": {"type": "array", "items": {"type": "string"}},
+    "limitations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/text"}, "description": "如实说明静态检查、实际播放、教师认可等证据边界。"},
+    "deckReview": {
+      "type": "object",
+      "required": ["continuity", "hierarchy", "compositionByJob", "referenceComparison"],
+      "properties": {
+        "continuity": {"$ref": "#/$defs/text"},
+        "hierarchy": {"$ref": "#/$defs/text"},
+        "compositionByJob": {"$ref": "#/$defs/text"},
+        "referenceComparison": {"$ref": "#/$defs/text"}
+      }
+    },
+    "designTarget": {
+      "type": "object",
+      "required": ["status", "specQuote", "criteria", "comparison", "remainingGaps"],
+      "properties": {
+        "status": {"enum": ["met", "not_met"]},
+        "specQuote": {"$ref": "#/$defs/text", "description": "逐字保留冻结包中的设计目标。"},
+        "criteria": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/text"}, "description": "逐字并按原顺序保留冻结包中的准则。"},
+        "comparison": {"$ref": "#/$defs/text"},
+        "remainingGaps": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["slide", "state", "status", "findings", "needs_human_items", "design_intent_check", "pageJob", "relationships", "realization", "observations"],
+        "properties": {
+          "slide": {"type": "integer", "minimum": 1},
+          "state": {"type": "integer", "minimum": 0},
+          "status": {"enum": ["ok", "needs_human", "render_failed", "prereq_failed"], "description": "只读审阅沿用原版逐页状态；本适配不接受 fixed 绕过重新制作、渲染和派发。"},
+          "findings": {"type": "array", "items": {"type": "object", "properties": {"rule": {"type": "string"}, "severity": {"type": "string"}, "evidence": {"type": "string"}}}, "description": "保留真实问题及原版报告字段；severity 为 hard 的问题会阻断交付。"},
+          "needs_human_items": {"type": "array", "items": {"type": "object", "properties": {"rule": {"type": "string"}, "suggested_fix_summary": {"type": "string"}}}, "description": "记录需人工处理事项及建议；非空时不能通过交付检查。"},
+          "design_intent_check": {
+            "type": "object",
+            "required": ["spec_says", "render_delivers", "note"],
+            "properties": {
+              "spec_says": {"$ref": "#/$defs/text", "description": "逐字引用包内本页 §IX 任务；运行时检查它属于本页冻结原文。"},
+              "render_delivers": {"type": "boolean", "description": "实际观察后填写是否兑现设计意图。"},
+              "note": {"$ref": "#/$defs/text"}
+            }
+          },
+          "pageJob": {"$ref": "#/$defs/text"},
+          "relationships": {"$ref": "#/$defs/text"},
+          "realization": {"$ref": "#/$defs/text"},
+          "observations": {"$ref": "#/$defs/text"},
+          "carrierCheck": {"$ref": "#/$defs/text", "description": "本页末态必填：结合原稿和任务判断材料的视觉机会与实际承载，不以图片数量代替判断。"},
+          "referenceComparisons": {
+            "type": "array",
+            "items": {"type": "object", "required": ["referenceId", "observation"], "properties": {"referenceId": {"$ref": "#/$defs/text"}, "observation": {"$ref": "#/$defs/text"}}},
+            "description": "本页末态至少一项；referenceId 必须指向冻结包中的真实参照图。"
+          },
+          "styleChecks": {
+            "type": "array",
+            "items": {"type": "object", "required": ["path", "observation", "met"], "properties": {"path": {"$ref": "#/$defs/text"}, "observation": {"$ref": "#/$defs/text"}, "met": {"type": "boolean"}}},
+            "description": "本页末态逐项回应包内实际存在的风格审阅重点；path 保留冻结包中的路径，met 按实际观察填写。"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "text": {"type": "string", "pattern": "\\S"},
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

@@ -9,8 +9,9 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import JSZip from 'jszip';
 import xmljs from 'xml-js';
-import {runStageCommand, assertBuildStages, collectProductionInputs, finishBuildRecord} from './native-stages.mjs';
+import {runStageCommand, assertBuildStages, collectProductionInputs, finishBuildRecord,finishStatesRecord,validateOriginalDesign} from './native-stages.mjs';
 import {createEnvironment as environment} from './lib/environment.mjs';
+import {renderPptx,renderSvgPreview} from './lib/rendering.mjs';
 
 const require=createRequire(import.meta.url);
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
@@ -277,8 +278,8 @@ async function artifact(projectData,pptx,runtime,reportDir,makeStates=false){
 
 export async function runNativeCommand(args,{root,skillDir}){
   const [command,projectArg,pptxArg,...extra]=args;
-  assert(['doctor','init','prepare','gate','build','check','states','release-check'].includes(command),'原生路线命令：doctor | init | prepare | gate | build | check | states | release-check');
-  assert(command==='prepare'||!extra.length,'不接受未声明参数');
+  assert(['doctor','init','prepare','gate','build','check','states','render','render-svg','review-pack','review-import','release-check'].includes(command),'原生路线命令：doctor | init | prepare | gate | build | check | states | render | render-svg | review-pack | review-import | release-check');
+  assert(['prepare','review-pack','review-import','render'].includes(command)||!extra.length,'不接受未声明参数');
   const runtime=await environment(root,skillDir);
   if(command==='doctor'){assert(!projectArg,'doctor不接受工程参数');const result=await doctor(runtime);console.log(JSON.stringify(result,null,2));return result;}
   assert(projectArg,'缺少课程工程路径');const project=path.resolve(root,projectArg);
@@ -292,7 +293,13 @@ export async function runNativeCommand(args,{root,skillDir}){
     await fs.writeFile(path.join(project,'课程制作起点.md'),'# 课程制作起点\n\n此目录由官方标准路线初始化，目前未完成设计或制作。\n\n先冻结课程大纲/逐字稿/材料到 sources/，核真实SHA256；填写 design_spec.md、spec_lock.md 和 course-project.json。契约格式见技能 references/native-contract.schema.json。逐页 SVG 和同名 notes 必须由实际课程设计产生，不能用假hash/空备注骗过检查。新作品输出到独立exports时间戳文件；不得覆盖旧交付件。\n',{flag:'wx'});
     const result={status:'INITIALIZED_NOT_AUTHORED',project};console.log(JSON.stringify(result,null,2));return result;
   }
-  if(!['prepare','gate','release-check'].includes(command))assert(command==='build'?!pptxArg:Boolean(pptxArg),command==='build'?'build输出由时间戳确定，不接受覆盖目标':'缺少PPTX路径');
+  if(['render','render-svg'].includes(command)){
+    assert(!extra.length||(command==='render'&&extra.length===2&&extra[0]==='--backend'&&['office','libreoffice'].includes(extra[1])),'render只接受显式 --backend office|libreoffice');
+    assert(pptxArg,'缺少渲染源路径');await doctor(runtime);
+    const result=command==='render'?await renderPptx({runtime,projectDir:project,sourceFile:path.resolve(root,pptxArg),backend:extra[1]||'auto'}):await renderSvgPreview({runtime,projectDir:project,svgProjectDir:path.resolve(root,pptxArg)});
+    console.log(JSON.stringify(result,null,2));return result;
+  }
+  if(!['prepare','gate','review-pack','review-import','release-check'].includes(command))assert(command==='build'?!pptxArg:Boolean(pptxArg),command==='build'?'build输出由时间戳确定，不接受覆盖目标':'缺少PPTX路径');
   const reportDir=path.join(project,'validation',`native-${command}-${stamp()}`);await fs.mkdir(reportDir,{recursive:true});
   const timings=[];let output;
   const step=async(name,fn)=>{const start=performance.now();try{const result=await fn();timings.push({name,status:'PASS',milliseconds:Math.round(performance.now()-start)});return result;}catch(e){timings.push({name,status:'FAIL',milliseconds:Math.round(performance.now()-start),error:e.message});throw e;}};
@@ -302,13 +309,14 @@ export async function runNativeCommand(args,{root,skillDir}){
     catch(error){await fs.writeFile(log,String(error.stdout||'')+'\n'+String(error.stderr||error.message),{flag:'wx'});throw new Error(`${name} 执行失败；查看 ${log}`);}
   });
   try{
-    if(['prepare','gate','release-check'].includes(command)){
+    if(['prepare','gate','review-pack','review-import','release-check'].includes(command)){
       const result=await runStageCommand({command,project,args:args.slice(2),runtime,validate:validateNativeProject,doctor,reportDir,upstream});
       console.log(JSON.stringify({...result,reportDir},null,2));return{...result,reportDir};
     }
     await step('environment',()=>doctor(runtime));let data=await step('course-input',()=>validateNativeProject(project,runtime));
     let inputFingerprint,stages;
     if(command==='build'){
+      await step('original-design-schema',()=>validateOriginalDesign(runtime,project,reportDir));
       stages=await step('production-stages',()=>assertBuildStages(project,data.contract));
       inputFingerprint=await collectProductionInputs(project,data.contract);
       for(const file of ['design_spec.md','spec_lock.md'])assert((await fs.readFile(await localFile(project,file),'utf8')).trim(),`缺少设计文件：${file}`);
@@ -327,6 +335,7 @@ export async function runNativeCommand(args,{root,skillDir}){
       data=await step('course-input-after-build',()=>validateNativeProject(project,runtime));
     }else output=path.resolve(root,pptxArg);
     const report=await step('actual-artifact',()=>artifact(data,output,runtime,reportDir,command==='states'));
+    if(command==='states')await step('register-actual-states',()=>finishStatesRecord(project,reportDir,report,data.contract));
     const result={status:'MECHANICAL_PASS',project,pptx:output,reportDir,sha256:report.sha256,timings,officeValidation:report.officeValidation,visualReview:'NOT_REVIEWED',actualPlayback:'NOT_TESTED'};
     if(command==='build'){
       const copiedReport=path.join(reportDir,'svg_quality_report.json');await fs.copyFile(path.join(project,'validation/svg_quality_report.json'),copiedReport);

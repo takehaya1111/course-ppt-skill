@@ -28,9 +28,11 @@ node <技能目录>/scripts/run.mjs init <新工程目录>
 Windows 上可用已安装的 WPS 或 PowerPoint 进行真实静态渲染：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File <技能目录>/scripts/render-office-com.ps1 -InputPptx <成品.pptx> -OutputDir <新渲染目录>
+node <技能目录>/scripts/run.mjs render <工程> <成品或状态.pptx> --backend office
 ```
 
-助手检测到已运行的演示程序会退出，不接管正在编辑的文件。它导出静态图片，不证明动画放映已经验证。程序环境和核心测试可运行 `npm test`、`npm run test:integration`；后者使用临时合成材料，不读取个人课程，也不作美感评价。
+命令保存源副本及逐页来源凭据。已有演示程序可借用接口，但只打开并关闭本次只读副本，不改动或关闭用户文稿。它导出静态图片，不证明动画放映。显式 `--backend libreoffice` 可调用现有 LibreOffice 和 `pdftoppm` 作替代渲染；可用 `PPT_SKILL_LIBREOFFICE`、`PPT_SKILL_PDFTOPPM` 指定路径，缺少时明确失败，不自动安装。替代渲染不会冒充 WPS。直接调用底层PowerShell脚本没有完整来源凭据，不能直接用于新交付审阅。
+
+v0.5.1旧审阅记录须按 `render → review-pack → 真正独立审阅 → review-import → release-check` 重新验证，不能批量补PASS或编造宿主回执。无独立上下文的宿主可制作和自审，但不能给出独立通过状态。更新其他宿主已安装技能时保留自己的 `.venv`、`node_modules`、`runtime.local.json`，更新完整发布文件后运行doctor。程序环境和核心测试可运行 `npm test`、`npm run test:integration`；后者使用临时合成材料，不读取个人课程，也不作美感评价。
 
 公开仓库：[takehaya1111/course-ppt-skill](https://github.com/takehaya1111/course-ppt-skill)。版本与上游来源见 [UPSTREAM.md](UPSTREAM.md)。

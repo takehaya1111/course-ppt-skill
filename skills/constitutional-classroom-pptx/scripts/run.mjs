@@ -16,6 +16,10 @@ const help = `宪法课堂课件：默认使用 PPT Master 原生制作路线
   build <项目路径>                 校验既有设计输入并导出原生动效PPTX
   check <项目路径> <PPTX路径>      回读实际文件，核正文、图片、备注及点击
   states <项目路径> <PPTX路径>     制作静态显隐核对副本（不是放映）
+  render <项目路径> <PPTX路径> [--backend office|libreoffice] 真实渲染及源、页、图对应
+  render-svg <项目路径> <快照项目路径> 原版预览服务渲染early SVG快照
+  review-pack <项目路径> <请求JSON> [--early] 冻结事实与原版审阅输入，不生成通过
+  review-import <项目路径> <原始报告> <宿主指派记录> [--early] 保留隔离审阅原件
   release-check <项目路径> <PPTX路径> 核本次输入、成品及独立设计审阅
 模型完成设计判断和完整页面作者稿；build不是自动设计器。
 安装：先在技能目录运行 npm ci，再运行 node scripts/setup.mjs。
@@ -26,7 +30,7 @@ try {
     console.log(help);
   } else if (command === 'legacy') {
     throw new Error('独立技能包仅维护 PPT Master 原生路线。历史实验入口保留在原工作区，请在那里使用原来的历史工具；本包不会自动重建或改写旧实验。');
-  } else if (['doctor','init','prepare','gate','build','check','states','release-check'].includes(command)) {
+  } else if (['doctor','init','prepare','gate','build','check','states','render','render-svg','review-pack','review-import','release-check'].includes(command)) {
     const {runNativeCommand} = await import('./native-route.mjs');
     await runNativeCommand(args.length ? args : ['doctor'],{root,skillDir});
   } else {

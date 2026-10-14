@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "实际宿主指派与返回证据记录",
+  "description": "course-review-dispatch.v1 记录本次真实宿主指派及原始返回的文件凭据。contextIsolation 的 fresh 值描述实际隔离方式，不能靠自填字符串、改姓名或本记录本身证明独立审阅。",
+  "$comment": "运行时要求 reviewPackHash、authorContextId、reviewerContextId 与冻结包一致且作者/审阅者不同，核验两份 sourceEvidence 文件哈希；指派原文须包含 reviewerContextId、invocationId 及包哈希，返回原文须包含 reviewerContextId 及本次原始报告的实际哈希。时间须可解析。这些跨文件关联由代码复核，本模式不认证宿主、真实观看、美感、反伪造或用户认可；不得编造实际指派与返回证据。",
+  "type": "object",
+  "required": ["schema", "reviewPackHash", "host", "method", "invocationId", "dispatchedAt", "contextIsolation", "authorContextId", "reviewerContextId", "sourceEvidence"],
+  "properties": {
+    "schema": {"const": "course-review-dispatch.v1"},
+    "reviewPackHash": {"$ref": "#/$defs/hash"},
+    "host": {"$ref": "#/$defs/text", "description": "实际发起指派的宿主。"},
+    "method": {"$ref": "#/$defs/text", "description": "实际采用的指派方法。"},
+    "invocationId": {"$ref": "#/$defs/text", "description": "宿主实际指派记录中的调用标识。"},
+    "dispatchedAt": {"type": "string", "format": "date-time"},
+    "contextIsolation": {"const": "fresh", "description": "实际使用与作者隔离的新审阅上下文；无此实际隔离时不能生成有效指派记录。"},
+    "authorContextId": {"$ref": "#/$defs/text"},
+    "reviewerContextId": {"$ref": "#/$defs/text"},
+    "sourceEvidence": {
+      "type": "object",
+      "required": ["dispatch", "response"],
+      "properties": {
+        "dispatch": {"$ref": "#/$defs/fileReceipt", "description": "保存宿主实际指派原文的文件。"},
+        "response": {"$ref": "#/$defs/fileReceipt", "description": "保存宿主实际返回原文的文件；须关联本次原始报告的实际哈希。"}
+      }
+    }
+  },
+  "$defs": {
+    "text": {"type": "string", "pattern": "\\S"},
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "fileReceipt": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"$ref": "#/$defs/text", "description": "宿主原始证据文件的绝对路径。"},
+        "sha256": {"$ref": "#/$defs/hash"}
+      }
+    }
+  }
+}

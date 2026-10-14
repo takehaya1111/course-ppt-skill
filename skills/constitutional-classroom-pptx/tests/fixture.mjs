@@ -2,9 +2,40 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import {renderPptx} from '../scripts/lib/rendering.mjs';
 export const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 export const read=async file=>JSON.parse(await fs.readFile(file,'utf8'));
 export const json=async(file,value)=>fs.writeFile(file,JSON.stringify(value,null,2)+'\n');
+
+/** New-protocol fixture: real wrapper commands, mocked rendering/viewer only. */
+export async function writeEvidenceFixture({project,skillDir,report,run}){
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=','base64');
+  const runtime={skillDir,run:async(file,args)=>{
+    if(file!=='powershell.exe')throw new Error('Fixture expected explicit Office test double');
+    const input=args[args.indexOf('-InputPptx')+1],out=args[args.indexOf('-OutputDir')+1],pages=args[args.indexOf('-Pages')+1].split(',').map(Number),slides=[];
+    for(const index of pages){const image=path.join(out,`slide-${String(index).padStart(2,'0')}.png`);await fs.writeFile(image,png);slides.push({index,image});}
+    await json(path.join(out,'render-report.json'),{input,status:'success',slideCount:report.slides.length,application:'SOFTWARE TEST DOUBLE',version:'test',method:'not actual viewing',slides});return{stdout:'',stderr:''};
+  }};
+  const request={schema:'course-review-request.v1',authorContextId:'synthetic-author-context',reviewerContextId:'synthetic-fresh-review-context',stateReportPath:report.reportPath,referenceImages:[],states:[]};
+  const ref=path.join(project,'SYNTHETIC-reference.png');await fs.writeFile(ref,png);request.referenceImages.push({id:'test-ref',caption:'Synthetic fixture, not a design reference',path:ref,sha256:hash(png)});
+  const renders=[];
+  for(const s of report.staticStates)renders.push(await renderPptx({runtime,projectDir:project,sourceFile:s.file,backend:'office'}));
+  for(const slide of report.slides)for(let state=0;state<=slide.clickGroups.length;state++){
+    const render=renders[state],record=render.records.find(r=>r.page===slide.slide);
+    request.states.push({slide:slide.slide,state,imagePath:record.image.path,imageHash:record.image.sha256,renderManifestPath:render.manifestFile,renderManifestHash:render.manifestSha256});
+  }
+  const requestFile=path.join(project,'SYNTHETIC-review-request.json');await json(requestFile,request);
+  const made=await run(['review-pack',project,requestFile]),pack=await read(made.reviewPack.path);
+  const raw={schema:'course-raw-review.v1',reviewPackHash:made.reviewPack.sha256,reviewer:{kind:'agent',name:'SYNTHETIC TEST FIXTURE NOT ACTUAL VIEWER',contextId:request.reviewerContextId},reviewedAt:new Date().toISOString(),status:'pass',unresolvedIssues:[],limitations:['Software protocol fixture; not real independent review, art validation or delivery'],deckReview:{continuity:'test',hierarchy:'test',compositionByJob:'test',referenceComparison:'test'},designTarget:{...pack.designTarget,status:'met',comparison:'synthetic test only',remainingGaps:[]},pages:pack.states.map(s=>({slide:s.slide,state:s.state,status:'ok',findings:[],needs_human_items:[],design_intent_check:{spec_says:s.specSection,render_delivers:true,note:'synthetic test only'},pageJob:'test',relationships:'test',realization:'test',observations:'test',carrierCheck:'test',referenceComparisons:[{referenceId:'test-ref',observation:'synthetic test only'}],styleChecks:[]}))};
+  const rawFile=path.join(project,'SYNTHETIC-raw-review.json');await json(rawFile,raw);
+  const dispatch={schema:'course-review-dispatch.v1',reviewPackHash:made.reviewPack.sha256,authorContextId:request.authorContextId,reviewerContextId:request.reviewerContextId,host:'TEST DOUBLE',method:'TEST ONLY',invocationId:'test-call-id',dispatchedAt:new Date().toISOString(),contextIsolation:'fresh'};
+  const sent=path.join(project,'SYNTHETIC-host-dispatch.txt'),received=path.join(project,'SYNTHETIC-host-response.txt');
+  await fs.writeFile(sent,`SYNTHETIC TEST ONLY\n${dispatch.invocationId}\n${dispatch.reviewerContextId}\n${dispatch.reviewPackHash}`);
+  await fs.writeFile(received,`SYNTHETIC TEST ONLY\n${dispatch.reviewerContextId}\n${hash(await fs.readFile(rawFile))}`);
+  dispatch.sourceEvidence={dispatch:{path:sent,sha256:hash(await fs.readFile(sent))},response:{path:received,sha256:hash(await fs.readFile(received))}};
+  const dispatchFile=path.join(project,'SYNTHETIC-dispatch.json');await json(dispatchFile,dispatch);
+  await run(['review-import',project,rawFile,dispatchFile]);return{request,requestFile,rawFile,dispatchFile,renders};
+}
 export async function writeFixture(project,skillDir,{pages=2,authored=pages}={}){
   for(const dir of ['sources','svg_output','notes','images','templates','validation','exports'])await fs.mkdir(path.join(project,dir),{recursive:true});
   const paragraphs=Array.from({length:pages},(_,i)=>`Synthetic source paragraph ${i+1}. This is software test input, not course material.`);

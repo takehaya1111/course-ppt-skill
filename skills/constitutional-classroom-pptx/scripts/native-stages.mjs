@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import JSZip from 'jszip';
 import xmljs from 'xml-js';
 import {evaluateReviewEvidence} from './lib/review-evidence.mjs';
+import {prepareReviewPack,importReview,loadReviewEvidence} from './lib/review-package.mjs';
 
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 const assert=(ok,message)=>{if(!ok)throw new Error(message);};
@@ -60,15 +61,50 @@ async function currentPreparation(project,contract){
   }
   return p;
 }
-async function hashesForReview(review,expected){
-  const files=[...new Set([...(review?.pages||[]).map(p=>p.imagePath),...expected.map(p=>p.renderSourcePath)])].filter(p=>typeof p==='string');
-  return Object.fromEntries(await Promise.all(files.map(async p=>[p,await exists(p)?await digest(p):null])));
-}
 async function evaluate(project,file,bindings,expected,kind){
-  const review=await read(file),result=evaluateReviewEvidence({review,bindings,expectedStates:expected,fileHashes:await hashesForReview(review,expected),kind});
+  const loaded=await loadReviewEvidence({project,reviewFile:file,bindings,expectedStates:expected,kind}),result=evaluateReviewEvidence({review:loaded.review,pack:loaded.pack,packHash:loaded.wrapper.reviewPack.sha256});
   assert(result.pass,result.errors.join('；'));return{...result,reviewFile:file,reviewHash:await digest(file)};
 }
 function earlyExpected(early){return early.pages.map((p,i)=>({slide:i+1,state:0,renderSourcePath:p.path,renderSourceHash:p.sha256}));}
+
+export async function validateOriginalDesign(runtime,project,reportDir){
+  // Call the upstream schema validator directly: its legacy project wrapper
+  // deliberately skips unmarked documents, which new course productions must not do.
+  const code="import json,sys; from pathlib import Path; sys.path.insert(0,sys.argv[1]); from project_management.project_specs import validate_markdown_schema,SCHEMA_DIR; p=Path(sys.argv[2]); errors=sum([validate_markdown_schema(p/name,SCHEMA_DIR/schema) for name,schema in [('design_spec.md','design_spec.schema.json'),('spec_lock.md','spec_lock.schema.json')]],[]); print(json.dumps({'status':'FAIL' if errors else 'PASS','errors':errors},ensure_ascii=False))";
+  const result=JSON.parse((await runtime.run(runtime.config.executable,['-c',code,path.join(runtime.official,'scripts'),project])).stdout.trim());
+  if(reportDir)await write(path.join(reportDir,'original-design-schema.json'),result);
+  assert(result.status==='PASS',`原版设计schema未通过：${result.errors.join('；')}`);return result;
+}
+
+export async function finishStatesRecord(project,reportDir,report,contract){
+  const build=await record(project,'build'),b=build.value;
+  assert(b.schema==='native-build-record.v1'&&b.status==='MECHANICAL_PASS'&&report.sha256===b.artifactHash,'states必须来自当前有效build的实际PPTX');
+  assert(identical(await collectProductionInputs(project,contract),b.inputFingerprint),'states时制作输入与当前build不一致');
+  assert(Array.isArray(report.staticStates)&&report.staticStates.length,'未实际产生静态状态文件');
+  const reportFile=path.join(reportDir,'artifact-check.json');
+  const result={schema:'native-states-record.v1',status:'STATES_MATERIALIZED',createdAt:new Date().toISOString(),buildRecordHash:build.sha256,artifactHash:b.artifactHash,report:{file:reportFile,sha256:await digest(reportFile)}};
+  const file=path.join(reportDir,'states-record.json');await write(file,result);await point(project,'states',file);return result;
+}
+
+async function finalExpected(project,c,build,stateReportPath){
+  const b=build.value;
+  const expected=[];
+  if(c.slides.some(s=>s.clicks>0)){
+    assert(typeof stateReportPath==='string','动效审阅请求缺少 stateReportPath');
+    const receipt=await record(project,'states'),actual=receipt.value;
+    assert(actual.schema==='native-states-record.v1'&&actual.status==='STATES_MATERIALIZED'&&actual.buildRecordHash===build.sha256&&actual.artifactHash===b.artifactHash,'缺少由当前build实际states命令产生的状态记录；旧工程需重新states，不得补签');
+    assert(path.resolve(stateReportPath)===path.resolve(actual.report.file),'stateReportPath不是实际states命令登记的报告；不接受自写或替换报告');
+    assert(await digest(actual.report.file)===actual.report.sha256,'实际states报告已被篡改；请重新运行states');
+    const states=await read(actual.report.file);
+    assert(states.sha256===b.artifactHash&&states.status==='PASS'&&Array.isArray(states.staticStates),'静态状态报告未绑定本次PPTX');
+    assert(new Set(states.staticStates.map(s=>s.stage)).size===states.staticStates.length,'状态报告有重复阶段');
+    for(const source of states.staticStates)assert(await digest(source.file)===source.sha256,'实际states生成的源文件已经改变');
+    for(const [i,s]of c.slides.entries())for(let state=0;state<=s.clicks;state++){
+      const source=states.staticStates.find(x=>x.stage===state);assert(source?.slides?.[i]?.stem===s.stem&&source.slides[i].appliedClicks===state,'状态报告缺少实际页/点击状态');expected.push({slide:i+1,state,renderSourcePath:source.file,renderSourceHash:source.sha256});
+    }
+  }else c.slides.forEach((s,i)=>expected.push({slide:i+1,state:0,renderSourcePath:b.pptx,renderSourceHash:b.artifactHash}));
+  return expected;
+}
 
 export async function assertBuildStages(project,contract){
   const preparation=await currentPreparation(project,contract);
@@ -110,8 +146,28 @@ export async function finishBuildRecord(project,reportDir,result,inputs,after,st
 
 export async function runStageCommand({command,project,args,runtime,validate,doctor,reportDir,upstream}){
   await doctor(runtime);
-  const data=await validate(project,runtime,{mode:command==='release-check'?'complete':command==='gate'?'partial':'plan'}),c=data.contract;
+  const data=await validate(project,runtime,{mode:command==='release-check'?'complete':['gate','review-pack','review-import'].includes(command)?'partial':'plan'}),c=data.contract;
+  if(command==='review-import'){
+    assert(args.length===2||(args.length===3&&args[2]==='--early'),'review-import需要原始报告、宿主指派记录，可选--early');
+    return importReview({project,rawFile:path.resolve(runtime.root,args[0]),dispatchFile:path.resolve(runtime.root,args[1]),kind:args[2]==='--early'?'early':'final'});
+  }
+  if(command==='review-pack'){
+    assert(args.length===1||(args.length===2&&args[1]==='--early'),'review-pack需要请求JSON，可选--early');
+    const requestFile=path.resolve(runtime.root,args[0]),request=await read(requestFile),early=args[1]==='--early';
+    if(early){
+      const r=await record(project,'early'),e=r.value;
+      assert(e.status==='EARLY_TECHNICAL_PASS','缺少原版前5页技术检查');
+      const snapshotRoot=path.dirname(path.dirname(e.pages[0].path));
+      return prepareReviewPack({project,skillDir:runtime.skillDir,requestFile,outputDir:reportDir,bindings:{earlyRecordHash:r.sha256,designSpecHash:e.designSpecHash,specLockHash:e.specLockHash},expectedStates:earlyExpected(e),kind:'early',specFile:path.join(snapshotRoot,'design_spec.md'),lockFile:path.join(snapshotRoot,'spec_lock.md'),officialReport:e.officialReport.file});
+    }
+    const build=await record(project,'build'),b=build.value;
+    assert(b.status==='MECHANICAL_PASS'&&identical(await collectProductionInputs(project,c),b.inputFingerprint),'制作输入已变化或build无效；先完成当前build');
+    assert(await digest(b.pptx)===b.artifactHash,'build成品已经改变');
+    const bindings={artifactHash:b.artifactHash,buildRecordHash:build.sha256,designSpecHash:b.designSpecHash,specLockHash:b.specLockHash};
+    return prepareReviewPack({project,skillDir:runtime.skillDir,requestFile,outputDir:reportDir,bindings,expectedStates:await finalExpected(project,c,build,request.stateReportPath&&path.resolve(project,request.stateReportPath)),officialReport:b.finalReport.file});
+  }
   if(command==='prepare'){
+    await validateOriginalDesign(runtime,project,reportDir);
     const revision=args[0]==='--revision-of';assert(!args.length||(revision&&args.length===2),'prepare只接受 --revision-of <基线PPTX>');
     const context=await stageContext(project,c),present=await authored(project);
     const prior=await exists(path.join(project,'validation/current-prepare.json'))?await record(project,'prepare'):null;
@@ -147,7 +203,8 @@ export async function runStageCommand({command,project,args,runtime,validate,doc
     await upstream('svg_quality_checker.py',[project,'--canonical-authoring','--stage','early','--json']);
     const snapshotRoot=path.join(reportDir,'authoring-snapshot'),snapshotDir=path.join(snapshotRoot,'svg_output');await fs.mkdir(snapshotDir,{recursive:true});const pages=[],snapshotFiles=[];
     for(const stem of expected){const file=path.join(snapshotDir,`${stem}.svg`);await fs.copyFile(path.join(project,'svg_output',`${stem}.svg`),file);pages.push({stem,path:file,sha256:await digest(file)});}
-    for(const relative of [...new Set([...c.assets.filter(a=>a.slides.some(s=>expected.includes(s))).map(a=>a.path),...await actualAssetFiles(project,c.slides.slice(0,5)),'design_spec.md','spec_lock.md','course-project.json'])]){
+    for(const stem of expected){const relative=`notes/${stem}.md`;if(await exists(path.join(project,relative))){const file=path.join(snapshotRoot,relative);await fs.mkdir(path.dirname(file),{recursive:true});await fs.copyFile(path.join(project,relative),file);snapshotFiles.push({path:file,sha256:await digest(file)});}}
+    for(const relative of [...new Set([...c.assets.filter(a=>a.slides.some(s=>expected.includes(s))).map(a=>a.path),...await actualAssetFiles(project,c.slides.slice(0,5)),...await treeFiles(project,'templates'),'design_spec.md','spec_lock.md','course-project.json'])]){
       const file=path.join(snapshotRoot,relative);await fs.mkdir(path.dirname(file),{recursive:true});await fs.copyFile(path.join(project,relative),file);snapshotFiles.push({path:file,sha256:await digest(file)});
     }
     const official=path.join(project,'validation/svg_quality_early_report.json'),reportCopy=path.join(reportDir,'svg_quality_early_report.json');await fs.copyFile(official,reportCopy);
@@ -163,16 +220,12 @@ export async function runStageCommand({command,project,args,runtime,validate,doc
   assert(await digest(b.finalReport.file)===b.finalReport.sha256,'官方final报告已改变');
   const currentStages=await assertBuildStages(project,c);
   assert(identical(currentStages,b.stages),'当前阶段记录与本次build所绑定记录不同；须按当前准备/审阅记录重新build，不能替换既往阶段历史');
-  const reviewFile=path.join(project,'validation/design-review.json'),review=await read(reviewFile),expected=[];
+  const reviewFile=path.join(project,'validation/design-review.json'),review=await read(reviewFile);
   const bindings={artifactHash:b.artifactHash,buildRecordHash:build.sha256,designSpecHash:b.designSpecHash,specLockHash:b.specLockHash};
   for(const [field,value]of Object.entries(bindings))assert(review[field]===value,`审阅${field}未绑定当前build`);
-  if(c.slides.some(s=>s.clicks>0)){
-    assert(typeof review.stateReportPath==='string','动效审阅缺少stateReportPath');const states=await read(review.stateReportPath);
-    assert(review.stateReportHash===await digest(review.stateReportPath)&&states.sha256===b.artifactHash&&states.status==='PASS'&&Array.isArray(states.staticStates),'静态状态报告未绑定本次PPTX');
-    for(const [i,s]of c.slides.entries())for(let state=0;state<=s.clicks;state++){
-      const source=states.staticStates.find(x=>x.stage===state);assert(source?.slides?.[i]?.stem===s.stem&&source.slides[i].appliedClicks===state,'状态报告缺少实际页/点击状态');expected.push({slide:i+1,state,renderSourcePath:source.file,renderSourceHash:source.sha256});
-    }
-  }else c.slides.forEach((s,i)=>expected.push({slide:i+1,state:0,renderSourcePath:pptx,renderSourceHash:b.artifactHash}));
+  assert(review.schema==='course-design-review.v2','旧版审阅不能直接放行；需真实渲染、review-pack及隔离审阅');
+  const pack=await read(review.reviewPack.path);assert(await digest(pack.request.path)===pack.request.sha256,'审阅请求已改变');
+  const request=await read(pack.request.path),expected=await finalExpected(project,c,build,request.stateReportPath&&path.resolve(project,request.stateReportPath));
   const visual=await evaluate(project,reviewFile,bindings,expected,'final');
   const result={status:'REVIEWED_READY',checkedAt:new Date().toISOString(),pptx,artifactHash:b.artifactHash,buildRecordHash:build.sha256,visual,actualPlayback:'NOT_TESTED',userAcceptance:'PENDING',limitations:['只记录机械一致性及独立静态设计审阅；不冒充教师认可或真实放映。']};
   await write(path.join(reportDir,'run.json'),result);return result;

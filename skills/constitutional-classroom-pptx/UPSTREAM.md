@@ -11,6 +11,8 @@
 
 教学定制文件位于本包自己的 `SKILL.md`、`references/` 和 `scripts/`。它们整理课程材料、设计任务、简单点击、来源及审阅证据；原项目负责成熟设计方法和原生 PowerPoint 导出。加入教学定制不等于改用固定框线版式。
 
+`references/calibration/`另含PPT Master Examples固定提交`5f9923ad9bb1882a88aa29e5311a6a8a28cfc77a`的五张公开矢量内容页预览及该仓MIT许可。逐文件来源、规划与成品差异见该目录`SOURCES.md`和`sources.json`。预览只作视觉校准，不证明Office实显、原始生成次数或跨模型稳定；照片未另行打包。
+
 PPT Master 原代码按 [MIT 许可](vendor/ppt-master/LICENSE)分发，保留 [原作者与赞助信息](vendor/ppt-master/skills/ppt-master/SPONSORS.md)。第三方素材遵守其各自许可，特别是[图标声明](vendor/ppt-master/skills/ppt-master/templates/icons/THIRD_PARTY_NOTICES.md)和原技能 `scripts/pptx_shapes/data/` 内的声明。本包新增适配部分采用根目录 MIT 许可；此许可不覆盖第三方品牌标识、照片或独立素材的权利。
 
 不随包分发个人课程大纲、逐字稿、实验课件、对话、密钥、字体文件、OfficeCLI、办公软件或 Python/Node 依赖二进制。依赖按安装说明在本机配置。上游包含可选扩展，但教学默认路线不启用视频、旁白或付费图像接口；确有需求时按所选扩展配置。

@@ -1,0 +1,53 @@
+{
+  "repository": "https://github.com/hugohe3/ppt-master-examples",
+  "commit": "5f9923ad9bb1882a88aa29e5311a6a8a28cfc77a",
+  "capture_date": "2026-10-14",
+  "license": "MIT, original copyright Hugo He; see LICENSE",
+  "records": [
+    {
+      "preview": "goldberg-03.jpg",
+      "preview_sha256": "87b3ba905185f9a267501f49c02f4c39868fc6f5418fb3916bf34336218c1b58",
+      "preview_kind": "browser screenshot of official SVG; not Office rendering",
+      "repo_path": "examples/ppt169_goldberg_variations/svg_final/03_architecture.svg",
+      "source_svg_sha256": "53590571e29a309e32563c6cce684e55723e6d3a29b8276d5c24f68d0320ad86",
+      "source_git_blob": "b068c3b430321e7f2bdb63ecb37fe22e031015f7",
+      "matches_fixed_commit": true
+    },
+    {
+      "preview": "goldberg-04.jpg",
+      "preview_sha256": "5cb64394f066ceb4ac6479002beb5fcf2f766100479a861c63a23a04b633b2c7",
+      "preview_kind": "browser screenshot of official SVG; not Office rendering",
+      "repo_path": "examples/ppt169_goldberg_variations/svg_final/04_groups_of_three.svg",
+      "source_svg_sha256": "68406333118e7082701c1e79a8408f63d309e1fd531128c716fef7ad3d1a9282",
+      "source_git_blob": "aee364644108f3d6cf88109555fa1e9f1e2875dc",
+      "matches_fixed_commit": true
+    },
+    {
+      "preview": "infosec-09.jpg",
+      "preview_sha256": "bf0328f6d170c9983820dcb3b29b16632f1da06e0febacdc256a0549a08fe5df",
+      "preview_kind": "browser screenshot of official SVG; not Office rendering",
+      "repo_path": "examples/ppt169_infosec_training_zh_long/svg_final/09_password_rules.svg",
+      "source_svg_sha256": "7bc132825a946637bb67a87c6cb260451f5dc3b82a130901fba6fcfeaf7e301f",
+      "source_git_blob": "9d4249b72cdbc0ddfcfb5fcc5e79db78abe66fde",
+      "matches_fixed_commit": true
+    },
+    {
+      "preview": "infosec-11.jpg",
+      "preview_sha256": "ac7a00e5bf4e7ed6a13695ca2d61a729a6fc0eb71fe506e8cd1e29cf2ece247a",
+      "preview_kind": "browser screenshot of official SVG; not Office rendering",
+      "repo_path": "examples/ppt169_infosec_training_zh_long/svg_final/11_phish_email.svg",
+      "source_svg_sha256": "c366b1d924850c70380e4dc82e2963e961131505f2507380b8a0849dcb64d164",
+      "source_git_blob": "f877c6b8e0b55c4629beea8ecbf591428aac5f6f",
+      "matches_fixed_commit": true
+    },
+    {
+      "preview": "marathon-05.jpg",
+      "preview_sha256": "acce0d59b1c534d5a074561d1708abf5a2384bb787a0ae2048be0d73d01cceff",
+      "preview_kind": "browser screenshot of official SVG; not Office rendering",
+      "repo_path": "examples/ppt169_sub2_marathon_quick/svg_final/05_formation.svg",
+      "source_svg_sha256": "d624fdb72bfae6bac42d9251c3e96d77dd7514f72682a32b09b98b58b6b83a1b",
+      "source_git_blob": "ef7a34e211aff513235e65e9028d30842fc80e65",
+      "matches_fixed_commit": true
+    }
+  ]
+}

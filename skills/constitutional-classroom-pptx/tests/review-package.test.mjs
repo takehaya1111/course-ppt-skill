@@ -8,8 +8,10 @@ import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import JSZip from 'jszip';
 import {renderPptx} from '../scripts/lib/rendering.mjs';
-import {prepareReviewPack,importReview,loadReviewEvidence,extractReviewPlan} from '../scripts/lib/review-package.mjs';
+import {prepareReviewPack,importReview,loadReviewEvidence,extractReviewPlan,verifyReviewPack} from '../scripts/lib/review-package.mjs';
 import {evaluateReviewEvidence} from '../scripts/lib/review-evidence.mjs';
+import {REVIEW_POLICY} from '../scripts/lib/review-policy.mjs';
+import {syntheticPagePolicy} from './fixture.mjs';
 const skillDir=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),hash=b=>crypto.createHash('sha256').update(b).digest('hex'),digest=async f=>hash(await fs.readFile(f));
 const json=async(f,x)=>fs.writeFile(f,JSON.stringify(x,null,2));
 const read=async f=>JSON.parse(await fs.readFile(f,'utf8'));
@@ -29,8 +31,8 @@ test('full new evidence rejects wrong-state terminal images while all other bind
   const project=await fs.mkdtemp(path.join(os.tmpdir(),'course-review-test-'));
   t.after(async()=>{assert.ok(path.resolve(project).startsWith(path.join(path.resolve(os.tmpdir()),'course-review-test-')));await fs.rm(project,{recursive:true});});
   for(const d of ['validation','templates'])await fs.mkdir(path.join(project,d));
-  const spec='## I. Project Information\n| Communication Intent | Explain the relation visibly, with professional hierarchy. |\n## V. Layout Principles\nPreserve a common object and make changed relations visible.\n## IX. Content Outline\n#### Slide 01 - Synthetic\nKeep the object fixed while the relationship changes.\n## X. Notes\n';
-  await fs.writeFile(path.join(project,'design_spec.md'),spec);await fs.writeFile(path.join(project,'spec_lock.md'),'test lock');
+  const spec='## I. Project Information\n| Communication Intent | Explain the relation visibly, with professional hierarchy. |\n| Reading Mode | presentation |\n## V. Layout Principles\nPreserve a common object and make changed relations visible.\nSpacing anchors: page margin=64; block gap=24.\n## IX. Content Outline\n#### Slide 01 - Synthetic\nKeep the object fixed while the relationship changes.\n## X. Notes\n';
+  await fs.writeFile(path.join(project,'design_spec.md'),spec);await fs.writeFile(path.join(project,'spec_lock.md'),'## canvas\n- viewBox: 0 0 1280 720\n## communication\n- consumption_mode: presentation\n');
   await json(path.join(project,'course-project.json'),{sources:[],slides:[{stem:'01',noteParagraphs:[]}]});
   await fs.writeFile(path.join(project,'reference.png'),png);
   const zip=new JSZip();zip.file('ppt/presentation.xml','<p:presentation><p:sldIdLst><p:sldId id="1"/></p:sldIdLst></p:presentation>');
@@ -49,7 +51,12 @@ test('full new evidence rejects wrong-state terminal images while all other bind
   const requestFile=path.join(project,'request.json');await json(requestFile,request);
   const made=await prepareReviewPack({project,skillDir,requestFile,outputDir:path.join(project,'validation/pack'),bindings,expectedStates}),pack=await read(made.reviewPack.path);
   assert.equal(pack.status,undefined);assert.equal(pack.designTarget.status,undefined);assert.equal(pack.states.length,2);
-  const raw={schema:'course-raw-review.v1',reviewPackHash:made.reviewPack.sha256,reviewer:{kind:'agent',name:'SYNTHETIC TEST NOT A VIEWER',contextId:request.reviewerContextId},reviewedAt:new Date().toISOString(),status:'pass',unresolvedIssues:[],limitations:['Synthetic fixture only, not actual viewing'],deckReview:{continuity:'test',hierarchy:'test',compositionByJob:'test',referenceComparison:'test'},designTarget:{...pack.designTarget,status:'met',comparison:'test comparison, not actual aesthetic judgment',remainingGaps:[]},pages:pack.states.map(s=>({slide:s.slide,state:s.state,status:'ok',findings:[],needs_human_items:[],design_intent_check:{spec_says:'Keep the object fixed while the relationship changes.',render_delivers:true,note:'synthetic fixture'},pageJob:'test',relationships:'test',realization:'test',observations:'test',carrierCheck:'test',referenceComparisons:[{referenceId:'test-ref',observation:'test'}],styleChecks:[]}))};
+  assert.equal(pack.states[0].pageRole.value,null);assert.equal(pack.states[0].pageRole.declared,false);
+  assert.deepEqual(pack.states[0].authorCanvas.viewBox,[0,0,1280,720]);assert.deepEqual(pack.states[0].renderPixels,{width:1,height:1});
+  assert.match(pack.reviewContext.layoutPrinciples,/block gap=24/);
+  assert.deepEqual(pack.reviewContext.rules.hard,['H1','H2','H3','H4','H6','H7','H8','H9']);
+  const prompt=await fs.readFile(made.promptPath,'utf8');assert.match(prompt,/S3允许意图性不对称/);assert.match(prompt,/不把渲染分辨率当原稿尺寸/);
+  const raw={schema:'course-raw-review.v1',reviewPolicy:REVIEW_POLICY,reviewPackHash:made.reviewPack.sha256,reviewer:{kind:'agent',name:'SYNTHETIC TEST NOT A VIEWER',contextId:request.reviewerContextId},reviewedAt:new Date().toISOString(),status:'pass',unresolvedIssues:[],limitations:['Synthetic fixture only, not actual viewing'],deckReview:{continuity:'test',hierarchy:'test',compositionByJob:'test',referenceComparison:'test'},designTarget:{...pack.designTarget,status:'met',comparison:'test comparison, not actual aesthetic judgment',remainingGaps:[]},pages:pack.states.map(s=>({slide:s.slide,state:s.state,status:'ok',findings:[],needs_human_items:[],design_intent_check:{spec_says:'Keep the object fixed while the relationship changes.',render_delivers:true,note:'synthetic fixture'},pageJob:'test',relationships:'test',realization:'test',observations:'test',carrierCheck:'test',referenceComparisons:[{referenceId:'test-ref',observation:'test'}],styleChecks:[],...syntheticPagePolicy(pack)}))};
   const dispatch={schema:'course-review-dispatch.v1',reviewPackHash:made.reviewPack.sha256,authorContextId:request.authorContextId,reviewerContextId:request.reviewerContextId,host:'SOFTWARE TEST',method:'TEST DOUBLE',invocationId:'test-call',dispatchedAt:new Date().toISOString(),contextIsolation:'fresh'};
   const rawFile=path.join(project,'raw.json'),dispatchFile=path.join(project,'dispatch.json');await json(rawFile,raw);
   const sent=path.join(project,'SYNTHETIC-host-dispatch.txt'),received=path.join(project,'SYNTHETIC-host-response.txt');
@@ -58,6 +65,18 @@ test('full new evidence rejects wrong-state terminal images while all other bind
   dispatch.sourceEvidence={dispatch:{path:sent,sha256:await digest(sent)},response:{path:received,sha256:await digest(received)}};await json(dispatchFile,dispatch);
   const imported=await importReview({project,rawFile,dispatchFile}),loaded=await loadReviewEvidence({project,reviewFile:imported.reviewFile,bindings,expectedStates,kind:'final'});
   assert.equal(evaluateReviewEvidence({review:loaded.review,pack:loaded.pack,packHash:made.reviewPack.sha256}).pass,true);
+  for(const [label,change,pattern]of[
+    ['context',p=>p.reviewContext.layoutPrinciples='shortened convenient excerpt',/上下文/],
+    ['rules',p=>p.reviewContext.rules.soft.pop(),/上下文/],
+    ['role',p=>p.states[0].pageRole={value:'content',source:null,declared:false},/页面角色/],
+    ['canvas',p=>p.states[0].authorCanvas.viewBox=[0,0,1,1],/作者画布/],
+    ['pixels',p=>p.states[0].renderPixels.width=1280,/渲染像素/],
+    ['section',p=>p.states[0].specSection='different page task',/逐页§IX/],
+    ['legacy',p=>delete p.reviewPolicy,/旧审阅包/]
+  ]){
+    const altered=structuredClone(pack);change(altered);const f=path.join(project,`altered-${label}.json`);await json(f,altered);
+    await assert.rejects(verifyReviewPack({project,packFile:f,packHash:await digest(f),bindings,expectedStates,kind:'final'}),pattern);
+  }
   const weakTarget={...request,designTarget:{specQuote:pack.designTarget.specQuote,criteria:['visible']}};await json(path.join(project,'weak-target.json'),weakTarget);
   await assert.rejects(prepareReviewPack({project,skillDir,requestFile:path.join(project,'weak-target.json'),outputDir:path.join(project,'weak-pack'),bindings,expectedStates}),/完整承接/);
   // One wrong mapping alone; all files and hashes individually still exist/agree.

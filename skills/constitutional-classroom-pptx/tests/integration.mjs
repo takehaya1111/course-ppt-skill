@@ -28,6 +28,10 @@ try{
   await fail('新设计纲无版本标记不能仅获legacy warning',()=>validateOriginalDesign(runtime,project),/missing ppt-master-schema marker/);await fs.writeFile(specFile,specBytes);
   await fs.writeFile(lockFile,lockBytes.toString('utf8').replace('- mode: instructional','- mode: custom'));
   await fail('custom模式直接交原版schema核验所需行为字段',()=>validateOriginalDesign(runtime,project),/mode_behavior/);await fs.writeFile(lockFile,lockBytes);
+  await fs.writeFile(specFile,specBytes.toString('utf8').replace(/^\| Reading Mode \|.*\r?\n/m,''));
+  await fail('课堂设计不能遗漏原版阅读模式',()=>validateOriginalDesign(runtime,project),/阅读模式/);await fs.writeFile(specFile,specBytes);
+  await fs.writeFile(lockFile,lockBytes.toString('utf8').replace('- consumption_mode: presentation','- consumption_mode: text'));
+  await fail('设计纲与执行锁阅读目的冲突不能继续',()=>validateOriginalDesign(runtime,project),/阅读模式/);await fs.writeFile(lockFile,lockBytes);
   await fail('缺少准备记录不得导出',()=>run(['build',project]),/current-prepare/);
   assert.equal((await run(['prepare',project])).status,'PREPARED');pass('实际上游准备与字体校准');
   const build=await run(['build',project]);assert.equal(build.status,'MECHANICAL_PASS');pass('实际上游原生导出');

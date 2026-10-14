@@ -6,6 +6,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {verifyRenderEvidence} from './rendering.mjs';
+import {REVIEW_POLICY,extractReviewContext,pageRole,assertReviewContext} from './review-policy.mjs';
 
 const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 const digest=async p=>sha(await fs.readFile(p));
@@ -41,6 +42,10 @@ export function extractReviewPlan(spec,quote){
 
 export async function prepareReviewPack({project,skillDir,requestFile,outputDir,bindings,expectedStates,kind='final',officialReport,specFile=path.join(project,'design_spec.md'),lockFile=path.join(project,'spec_lock.md')}){
   const request=await read(requestFile),spec=await fs.readFile(specFile,'utf8'),plan=extractReviewPlan(spec,request.designTarget?.specQuote);
+  const official=path.join(skillDir,'vendor/ppt-master/skills/ppt-master');
+  const rubric=await entry(path.join(official,'references/visual-review.md'));
+  const upstreamReviewFiles={stage:await entry(path.join(official,'workflows/stages/visual-review.md')),executor:await entry(path.join(official,'references/executor-base.md'))};
+  const reviewContext=extractReviewContext(spec,await fs.readFile(lockFile,'utf8'),await fs.readFile(rubric.path,'utf8'));
   assert(await digest(specFile)===bindings.designSpecHash&&await digest(lockFile)===bindings.specLockHash,'派发的设计纲/锁不属于当前制作记录');
   assert(request.schema==='course-review-request.v1','需要事实型 course-review-request.v1 请求');
   assert(text(request.authorContextId)&&text(request.reviewerContextId)&&request.authorContextId!==request.reviewerContextId,'作者与审阅者必须使用不同上下文；仅改姓名不构成独立审阅');
@@ -62,7 +67,7 @@ export async function prepareReviewPack({project,skillDir,requestFile,outputDir,
     const checked=await verifyRenderEvidence({projectDir:project,manifestFile:renderManifestPath,manifestSha256:s.renderManifestHash,imageFile:imagePath,imageSha256:s.imageHash,sourceFile:wanted.renderSourcePath,sourceSha256:wanted.renderSourceHash,page:wanted.slide,kind:kind==='early'?'svg':'pptx'});
     assert(checked.pass,`状态 ${id} 的来源/页/图映射无效：${checked.errors.join('；')}`);
     const page=plan.slides.find(p=>p.slide===wanted.slide);assert(page,`§IX缺少第${wanted.slide}页`);
-    states.push({...wanted,imagePath,imageHash:s.imageHash,renderManifestPath,renderManifestHash:s.renderManifestHash,canvas:checked.record?.canvas||{width:checked.record?.image?.width,height:checked.record?.image?.height},specSection:page.specSection});
+    states.push({...wanted,imagePath,imageHash:s.imageHash,renderManifestPath,renderManifestHash:s.renderManifestHash,canvas:checked.record?.canvas||{width:checked.record?.image?.width,height:checked.record?.image?.height},authorCanvas:reviewContext.authorCanvas,renderPixels:{width:checked.record.image.width,height:checked.record.image.height},pageRole:pageRole(page.specSection),specSection:page.specSection});
   }
   const contextFiles=[await entry(specFile),await entry(lockFile)],styleFocus=[];
   if(request.stateReportPath)contextFiles.push(await entry(resolve(project,request.stateReportPath)));
@@ -85,15 +90,14 @@ export async function prepareReviewPack({project,skillDir,requestFile,outputDir,
       if(focus)styleFocus.push({path:file,excerpt:focus});
     }
   }
-  const official=path.join(skillDir,'vendor/ppt-master/skills/ppt-master');
-  const rubric=await entry(path.join(official,'references/visual-review.md'));
   const teachingReview=await entry(path.join(skillDir,'references/design-review.md'));
   if(officialReport)contextFiles.push(await entry(officialReport));
   const quality=officialReport?await read(officialReport):null;
-  const pack={schema:'course-review-pack.v1',kind,createdAt:new Date().toISOString(),bindings,request:await entry(requestFile),authorContextId:request.authorContextId,reviewerContextId:request.reviewerContextId,designTarget:{specQuote:plan.target,criteria:plan.criteria},references,materialSources,contextFiles,styleFocus,rubric,teachingReview,carrierReceipt:quality?.carrier_receipt??null,pageCarrierReceipts:quality?.files?.map(f=>({file:f.file,receipt:f.info?.carrier_receipt??null}))||[],carrierReceiptNote:'原版收据为实际使用事实，计数不是图片配额；结合原稿、逐页任务与画面判断表达是否充分。',states,limitations:['本包只有冻结事实与原版审阅输入，没有通过、美感评分或观看声明。','上下文与宿主记录可检查一致性，不是防伪认证，也不能证明人或模型真的看懂图片。']};
+  const pack={schema:'course-review-pack.v1',reviewPolicy:REVIEW_POLICY,reviewContext,upstreamReviewFiles,kind,createdAt:new Date().toISOString(),bindings,request:await entry(requestFile),authorContextId:request.authorContextId,reviewerContextId:request.reviewerContextId,designTarget:{specQuote:plan.target,criteria:plan.criteria},references,materialSources,contextFiles,styleFocus,rubric,teachingReview,carrierReceipt:quality?.carrier_receipt??null,pageCarrierReceipts:quality?.files?.map(f=>({file:f.file,receipt:f.info?.carrier_receipt??null}))||[],carrierReceiptNote:'原版收据为实际使用事实，计数不是图片配额；结合原稿、逐页任务与画面判断表达是否充分。',states,limitations:['本包只有冻结事实与原版审阅输入，没有通过、美感评分或观看声明。','上下文与宿主记录可检查一致性，不是防伪认证，也不能证明人或模型真的看懂图片。']};
   const file=path.join(outputDir,'review-pack.json');await write(file,pack);const receipt=await entry(file);
   const prompt=`你是独立视觉审阅者。当前审阅包：${file}\n包SHA256：${receipt.sha256}\n先完整读取包及其冻结文件，再实际查看全部 states 图片和 references 图片。按原版 rubric 审阅；§IX逐页任务、课程补充及Style Review Focus均为只读。不得降低设计目标，不得修改源文件，不得由代码生成通过结论。\n提交一个JSON原始报告：schema=course-raw-review.v1、reviewPackHash、reviewer={kind:agent,name,contextId:"${request.reviewerContextId}"}、reviewedAt、status(pass或fail)、unresolvedIssues、limitations、deckReview(continuity/hierarchy/compositionByJob/referenceComparison)、designTarget(status met/not_met, specQuote, criteria逐字取包内值, comparison, remainingGaps)。pages为所有有效slide/state，每项保留原版status(ok/needs_human/render_failed/prereq_failed)、findings数组、needs_human_items数组、design_intent_check={spec_says:该页§IX原文,render_delivers:true或false,note:实际观察}，并提供pageJob、relationships、realization、observations、carrierCheck(材料的视觉机会与实际承载，不按图片数判断)、referenceComparisons[{referenceId,observation}]、styleChecks[{path,observation,met}]。每项status只来自真实审阅，不预填；有缺陷如实失败。\n如无法在与作者隔离的新上下文工作，返回失败，不以另一姓名冒充独立。不要编造实际播放或教师认可。`;
-  await fs.writeFile(path.join(outputDir,'review-prompt.md'),prompt+'\n每页末态填写完整carrierCheck、referenceComparisons、styleChecks；其余显隐状态实际检查当前显示与关系，可不重复整页美感比较。最后在宿主回复中明确你的上下文ID、原始报告绝对路径及其SHA256，供保存真实返回记录。\n',{flag:'wx'});
+  const policyPrompt=`\n本次reviewPolicy=${REVIEW_POLICY}，原始报告逐字保留。先读upstreamReviewFiles（原版stage为原项目可选机制，本课程已要求独立审阅；本次只读，不做原地修复）。完整§I、§V和锁communication在reviewContext，逐页§IX及pageRole在states；pageRole未声明时如实指出，不猜content。authorCanvas.viewBox是作者坐标，renderPixels是实际图片像素，比较原版像素阈值前须换算，不把渲染分辨率当原稿尺寸。\n逐页完整扫描rubric §§1–2的原规则及其条件；H5由原版静态检查负责，不重造。尤其S1/S2只在同一逻辑块，S3允许意图性不对称/留白/图片焦点，S4只对本应共线者，S5只对等距卡片行，S8服从§IX主元素，不固定某种文字角色必然更大。§V间距允许有教学任务理由的偏离，不机械强制所有距离等于某个锚点。\n每页末态填写planChecks={readingMode,spacing,pageRole}的实际核对，以及ruleChecks:[{rules:[原版规则ID，可分组],result:clear|not_applicable|issue,observation:具体观察或不适用理由}]，唯一覆盖reviewContext.rules全部hard/soft ID；不得程序预填clear。issue必须对应findings或untouched_concerns。其余显隐状态也实际看图，可完整填写ruleChecks，或stateReview={baselineState:本页末态编号,observation:实际显隐变化及继承全页结论的适用性}；新碰撞/提前揭示仍须报出。\n每状态保留原版untouched_concerns数组。只读审阅不写fixed；真正修复须作者重做并重新渲染。零Hard且最多${reviewContext.rules.residualSoftLimit}处剩余Soft沿用原版§4.2，非零Soft须在untouched_concerns逐条以相同rule/evidence关联发现，记录reason(soft-cap reached|ambiguous_design_intent|deck_wide)、decision(retain或needs_decision)、rationale(为何留存且不损害设计目标)。跨页重复条件用reason=deck_wide及deckDecisionId，deckReview.softDecisions:[{id,rule,decision,rationale,slides}]一次统一决定；不能逐页各自放行。疑似问题不乱改，明确缺陷不能改称不适用。图文、层级或专业目标未达即使没有硬错误也应失败。\n`;
+  await fs.writeFile(path.join(outputDir,'review-prompt.md'),prompt+policyPrompt+'\n每页末态填写完整carrierCheck、referenceComparisons、styleChecks；其余显隐状态实际检查当前显示与关系，可不重复整页美感比较。最后在宿主回复中明确你的上下文ID、原始报告绝对路径及其SHA256，供保存真实返回记录。\n',{flag:'wx'});
   await fs.writeFile(path.join(project,'validation',`current-${kind==='early'?'early-':''}review-pack.json`),JSON.stringify(receipt,null,2)+'\n');
   return{status:'REVIEW_INPUTS_FROZEN_NOT_REVIEWED',reviewPack:receipt,promptPath:path.join(outputDir,'review-prompt.md')};
 }
@@ -101,10 +105,14 @@ export async function prepareReviewPack({project,skillDir,requestFile,outputDir,
 export async function verifyReviewPack({project,packFile,packHash,bindings,expectedStates,kind}){
   assert(await digest(packFile)===packHash,'审阅包已改变');const pack=await read(packFile);
   assert(pack.schema==='course-review-pack.v1'&&pack.kind===kind,'审阅包版本或阶段不符');
+  assert(pack.reviewPolicy===REVIEW_POLICY,'旧审阅包没有当前reviewPolicy，须重新派发，不得补签覆盖历史');
   assert(same(pack.bindings,bindings),'审阅包不属于当前设计与成品');
-  for(const e of [pack.request,pack.rubric,pack.teachingReview,...pack.contextFiles,...pack.references])await verifyFile(e);
+  assert(pack.upstreamReviewFiles?.stage&&pack.upstreamReviewFiles?.executor,'缺少固定原版审阅阶段与执行入口');
+  for(const e of [pack.request,pack.rubric,pack.teachingReview,pack.upstreamReviewFiles.stage,pack.upstreamReviewFiles.executor,...pack.contextFiles,...pack.references])await verifyFile(e);
   const spec=pack.contextFiles.find(e=>path.basename(e.path)==='design_spec.md');assert(spec,'审阅包缺少实际设计纲');
   const plan=extractReviewPlan(await fs.readFile(spec.path,'utf8'));
+  const lock=pack.contextFiles.find(e=>path.basename(e.path)==='spec_lock.md');assert(lock,'审阅包缺少原版执行锁');
+  const reviewContext=extractReviewContext(await fs.readFile(spec.path,'utf8'),await fs.readFile(lock.path,'utf8'),await fs.readFile(pack.rubric.path,'utf8'));assertReviewContext(pack.reviewContext,reviewContext);
   assert(pack.designTarget.specQuote===plan.target&&same(pack.designTarget.criteria,plan.criteria),'旧包或审阅目标没有完整承接既定目标');
   assert(pack.states.length===expectedStates.length,'审阅包状态覆盖不符');
   const seen=new Set();
@@ -113,6 +121,8 @@ export async function verifyReviewPack({project,packFile,packHash,bindings,expec
     assert(state.renderSourcePath===wanted.renderSourcePath&&state.renderSourceHash===wanted.renderSourceHash,'审阅包来源不属于当前状态');
     const check=await verifyRenderEvidence({projectDir:project,manifestFile:state.renderManifestPath,manifestSha256:state.renderManifestHash,imageFile:state.imagePath,imageSha256:state.imageHash,sourceFile:wanted.renderSourcePath,sourceSha256:wanted.renderSourceHash,page:wanted.slide,kind:kind==='early'?'svg':'pptx'});
     assert(check.pass,check.errors.join('；'));
+    const page=plan.slides.find(p=>p.slide===state.slide);assert(page&&state.specSection===page.specSection,'冻结逐页§IX原文被改变');
+    assert(same(state.pageRole,pageRole(page.specSection))&&same(state.authorCanvas,reviewContext.authorCanvas)&&same(state.renderPixels,{width:check.record.image.width,height:check.record.image.height}),'页面角色、作者画布或渲染像素与冻结原文/实测不一致');
   }
   return pack;
 }
@@ -121,6 +131,7 @@ export async function importReview({project,rawFile,dispatchFile,kind='final'}){
   const pointer=await read(path.join(project,'validation',`current-${kind==='early'?'early-':''}review-pack.json`)),pack=await read(pointer.path);
   assert(await digest(pointer.path)===pointer.sha256,'准备包已改变');
   const raw=await read(rawFile),dispatch=await read(dispatchFile);
+  assert(pack.reviewPolicy===REVIEW_POLICY&&raw.reviewPolicy===REVIEW_POLICY,'旧报告不能自动升级reviewPolicy；请重新独立审阅');
   const rawEntry=await entry(rawFile);
   await validateDispatch(dispatch,pack,pointer.sha256,rawEntry.sha256);assert(raw.schema==='course-raw-review.v1'&&raw.reviewPackHash===pointer.sha256,'原始审阅报告未绑定派发包');
   assert(raw.reviewer?.contextId===pack.reviewerContextId,'原始报告不属于被指派的独立上下文');

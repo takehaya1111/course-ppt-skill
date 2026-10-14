@@ -6,6 +6,7 @@ import JSZip from 'jszip';
 import xmljs from 'xml-js';
 import {evaluateReviewEvidence} from './lib/review-evidence.mjs';
 import {prepareReviewPack,importReview,loadReviewEvidence} from './lib/review-package.mjs';
+import {extractReadingMode} from './lib/review-policy.mjs';
 
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 const assert=(ok,message)=>{if(!ok)throw new Error(message);};
@@ -73,7 +74,12 @@ export async function validateOriginalDesign(runtime,project,reportDir){
   const code="import json,sys; from pathlib import Path; sys.path.insert(0,sys.argv[1]); from project_management.project_specs import validate_markdown_schema,SCHEMA_DIR; p=Path(sys.argv[2]); errors=sum([validate_markdown_schema(p/name,SCHEMA_DIR/schema) for name,schema in [('design_spec.md','design_spec.schema.json'),('spec_lock.md','spec_lock.schema.json')]],[]); print(json.dumps({'status':'FAIL' if errors else 'PASS','errors':errors},ensure_ascii=False))";
   const result=JSON.parse((await runtime.run(runtime.config.executable,['-c',code,path.join(runtime.official,'scripts'),project])).stdout.trim());
   if(reportDir)await write(path.join(reportDir,'original-design-schema.json'),result);
-  assert(result.status==='PASS',`原版设计schema未通过：${result.errors.join('；')}`);return result;
+  assert(result.status==='PASS',`原版设计schema未通过：${result.errors.join('；')}`);
+  // Classroom delivery must choose the upstream reading contract explicitly.
+  // This does not judge density or force full-text evidence into keywords.
+  const reading=extractReadingMode(await fs.readFile(path.join(project,'design_spec.md'),'utf8'),await fs.readFile(path.join(project,'spec_lock.md'),'utf8'));
+  assert(['text','balanced','presentation'].includes(reading.specValue)&&reading.specValue===reading.lockValue,'阅读模式缺失或冲突：请明确原版§I Reading Mode，并与锁communication.consumption_mode一致');
+  return {...result,readingMode:reading};
 }
 
 export async function finishStatesRecord(project,reportDir,report,contract){

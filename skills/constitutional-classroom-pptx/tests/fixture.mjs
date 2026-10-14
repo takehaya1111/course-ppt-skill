@@ -3,9 +3,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {renderPptx} from '../scripts/lib/rendering.mjs';
+import {REVIEW_POLICY} from '../scripts/lib/review-policy.mjs';
 export const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 export const read=async file=>JSON.parse(await fs.readFile(file,'utf8'));
 export const json=async(file,value)=>fs.writeFile(file,JSON.stringify(value,null,2)+'\n');
+/** Deliberately fabricated software-test judgments; never use for production. */
+export function syntheticPagePolicy(pack){
+  return {untouched_concerns:[],planChecks:{readingMode:'SYNTHETIC software assertion, not viewing',spacing:'SYNTHETIC software assertion, not viewing',pageRole:'SYNTHETIC software assertion, not viewing'},ruleChecks:[{rules:[...pack.reviewContext.rules.hard,...pack.reviewContext.rules.soft],result:'clear',observation:'SYNTHETIC software fixture, not actual visual judgment'}]};
+}
 
 /** New-protocol fixture: real wrapper commands, mocked rendering/viewer only. */
 export async function writeEvidenceFixture({project,skillDir,report,run}){
@@ -26,7 +31,7 @@ export async function writeEvidenceFixture({project,skillDir,report,run}){
   }
   const requestFile=path.join(project,'SYNTHETIC-review-request.json');await json(requestFile,request);
   const made=await run(['review-pack',project,requestFile]),pack=await read(made.reviewPack.path);
-  const raw={schema:'course-raw-review.v1',reviewPackHash:made.reviewPack.sha256,reviewer:{kind:'agent',name:'SYNTHETIC TEST FIXTURE NOT ACTUAL VIEWER',contextId:request.reviewerContextId},reviewedAt:new Date().toISOString(),status:'pass',unresolvedIssues:[],limitations:['Software protocol fixture; not real independent review, art validation or delivery'],deckReview:{continuity:'test',hierarchy:'test',compositionByJob:'test',referenceComparison:'test'},designTarget:{...pack.designTarget,status:'met',comparison:'synthetic test only',remainingGaps:[]},pages:pack.states.map(s=>({slide:s.slide,state:s.state,status:'ok',findings:[],needs_human_items:[],design_intent_check:{spec_says:s.specSection,render_delivers:true,note:'synthetic test only'},pageJob:'test',relationships:'test',realization:'test',observations:'test',carrierCheck:'test',referenceComparisons:[{referenceId:'test-ref',observation:'synthetic test only'}],styleChecks:[]}))};
+  const raw={schema:'course-raw-review.v1',reviewPolicy:REVIEW_POLICY,reviewPackHash:made.reviewPack.sha256,reviewer:{kind:'agent',name:'SYNTHETIC TEST FIXTURE NOT ACTUAL VIEWER',contextId:request.reviewerContextId},reviewedAt:new Date().toISOString(),status:'pass',unresolvedIssues:[],limitations:['Software protocol fixture; not real independent review, art validation or delivery'],deckReview:{continuity:'test',hierarchy:'test',compositionByJob:'test',referenceComparison:'test'},designTarget:{...pack.designTarget,status:'met',comparison:'synthetic test only',remainingGaps:[]},pages:pack.states.map(s=>({slide:s.slide,state:s.state,status:'ok',findings:[],needs_human_items:[],design_intent_check:{spec_says:s.specSection,render_delivers:true,note:'synthetic test only'},pageJob:'test',relationships:'test',realization:'test',observations:'test',carrierCheck:'test',referenceComparisons:[{referenceId:'test-ref',observation:'synthetic test only'}],styleChecks:[],...syntheticPagePolicy(pack)}))};
   const rawFile=path.join(project,'SYNTHETIC-raw-review.json');await json(rawFile,raw);
   const dispatch={schema:'course-review-dispatch.v1',reviewPackHash:made.reviewPack.sha256,authorContextId:request.authorContextId,reviewerContextId:request.reviewerContextId,host:'TEST DOUBLE',method:'TEST ONLY',invocationId:'test-call-id',dispatchedAt:new Date().toISOString(),contextIsolation:'fresh'};
   const sent=path.join(project,'SYNTHETIC-host-dispatch.txt'),received=path.join(project,'SYNTHETIC-host-response.txt');

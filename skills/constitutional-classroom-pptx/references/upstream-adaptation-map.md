@@ -18,7 +18,11 @@
 
 ## 怎样证明“本次用了”
 
-v0.5.1在既有路线内直接接入三项原版机制：`project_specs.validate_markdown_schema`检查原版设计纲/锁；`svg_quality`的`carrier_receipt`进入制作及审阅事实包；`visual_review.render_pages`用于早期SVG快照，原版逐页`design_intent_check`、发现清单和Style Review Focus用于独立实看。PPTX状态渲染的源文件/页号/图片绑定及宿主指派/返回是为Office成品补的薄适配；不更改原版导出器，也不把统计升级为自动审美判断。原版视觉审阅可选，本课程要求实际独立审阅是明确的教学定制。
+v0.5.1在既有路线内直接接入三项原版机制：`project_specs.validate_markdown_schema`检查原版设计纲/锁；`svg_quality`的`carrier_receipt`进入制作及审阅事实包；`visual_review.render_pages`用于早期SVG快照，原版逐页`design_intent_check`、发现清单和Style Review Focus用于独立实看。PPTX状态渲染的源文件/页号/图片绑定及宿主指派/返回是为Office成品补的薄适配；不更改原版导出器，也不把统计升级为自动审美判断。
+
+上游独立产品的视觉审阅阶段是可选入口；**在本课程路线中，独立逐页审阅是交付必经步骤**，包括原版硬规则、软规则及其条件和豁免。v0.5.2进一步核查报告的规则覆盖、未处理软问题和结论是否一致，并明确派发阅读方式、§V间距原文、页角色及作者画布；不能把“已经把规则文件交给模型”说成“模型已经逐项执行”。旧报告须重新实际审阅，不能补填默认通过。
+
+高频任务参照见[教学任务校准](teaching-calibration.md)。它提供选例与迁移边界，设计者仍执行原版九步；不是追加一套页面分类器或固定构图库。
 
 不需要每次写调研报告。作者记录简短保留三列即可：
 

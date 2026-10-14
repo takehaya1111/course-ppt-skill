@@ -33,6 +33,8 @@ node <技能目录>/scripts/run.mjs render <工程> <成品或状态.pptx> --bac
 
 命令保存源副本及逐页来源凭据。已有演示程序可借用接口，但只打开并关闭本次只读副本，不改动或关闭用户文稿。它导出静态图片，不证明动画放映。显式 `--backend libreoffice` 可调用现有 LibreOffice 和 `pdftoppm` 作替代渲染；可用 `PPT_SKILL_LIBREOFFICE`、`PPT_SKILL_PDFTOPPM` 指定路径，缺少时明确失败，不自动安装。替代渲染不会冒充 WPS。直接调用底层PowerShell脚本没有完整来源凭据，不能直接用于新交付审阅。
 
-v0.5.1旧审阅记录须按 `render → review-pack → 真正独立审阅 → review-import → release-check` 重新验证，不能批量补PASS或编造宿主回执。无独立上下文的宿主可制作和自审，但不能给出独立通过状态。更新其他宿主已安装技能时保留自己的 `.venv`、`node_modules`、`runtime.local.json`，更新完整发布文件后运行doctor。程序环境和核心测试可运行 `npm test`、`npm run test:integration`；后者使用临时合成材料，不读取个人课程，也不作美感评价。
+v0.5.2增加原版规则覆盖要求，旧审阅须按 `render → review-pack → 真正独立审阅 → review-import → release-check` 重新验证，不能批量补PASS或编造宿主回执。没有改动且来源绑定仍有效的实际渲染可以复用，不能伪造重新观看。无独立上下文的宿主可制作和自审，但不能给出独立通过状态。
+
+更新其他宿主已安装技能时保留自己的 `.venv`、`node_modules`、`runtime.local.json`；先比较其本地修改并备份，不覆盖正在制作课件的安装目录。升级后重新加载技能，确认实际读取的路径和版本，再运行doctor。其他宿主自己追加的门禁不属于本包验证范围，须单独核查，不能只改版本号算合并完成。程序环境和核心测试可运行 `npm test`、`npm run test:integration`；后者使用临时合成材料，不读取个人课程，也不作美感评价。
 
 公开仓库：[takehaya1111/course-ppt-skill](https://github.com/takehaya1111/course-ppt-skill)。版本与上游来源见 [UPSTREAM.md](UPSTREAM.md)。
